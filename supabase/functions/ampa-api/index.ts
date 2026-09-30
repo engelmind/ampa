@@ -1,0 +1,326 @@
+import postgres from 'npm:postgres@3.4.7';
+
+const dbUrl = Deno.env.get('SUPABASE_DB_URL');
+if (!dbUrl) throw new Error('SUPABASE_DB_URL missing');
+const sql = postgres(dbUrl, { prepare: false, max: 1, idle_timeout: 10, connect_timeout: 10 });
+
+const encoder = new TextEncoder();
+const SESSION_SECONDS = 60 * 60 * 12;
+const PBKDF2_ITERATIONS = 310000;
+
+function reply(body: unknown, status = 200, extraHeaders: Record<string,string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extraHeaders },
+  });
+}
+function pathOf(req: Request) {
+  const p = new URL(req.url).pathname;
+  const i = p.indexOf('/ampa-api');
+  const suffix = i >= 0 ? p.slice(i + '/ampa-api'.length) : p;
+  return suffix || '/';
+}
+function cookie(req: Request, name: string) {
+  const raw = req.headers.get('cookie') || '';
+  for (const part of raw.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (k === name) return decodeURIComponent(rest.join('='));
+  }
+  return null;
+}
+function setCookie(token: string) {
+  return `ampa_session=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${SESSION_SECONDS}`;
+}
+function clearCookie() {
+  return 'ampa_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0';
+}
+function base64url(bytes: Uint8Array) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function fromBase64url(s: string) {
+  const padded = s.replace(/-/g,'+').replace(/_/g,'/') + '='.repeat((4 - s.length % 4) % 4);
+  const bin = atob(padded);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function randomToken(bytes = 32) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return base64url(arr);
+}
+async function derive(password: string, salt: Uint8Array, iterations: number) {
+  const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', hash:'SHA-256', salt, iterations }, key, 256);
+  return new Uint8Array(bits);
+}
+async function hashPassword(password: string) {
+  const salt = new Uint8Array(16); crypto.getRandomValues(salt);
+  const hash = await derive(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2_sha256$${PBKDF2_ITERATIONS}$${base64url(salt)}$${base64url(hash)}`;
+}
+async function verifyPassword(password: string, encoded: string) {
+  const [algo, it, salt, expected] = encoded.split('$');
+  if (algo !== 'pbkdf2_sha256' || !it || !salt || !expected) return false;
+  const actual = await derive(password, fromBase64url(salt), Number(it));
+  const exp = fromBase64url(expected);
+  if (actual.length !== exp.length) return false;
+  let diff = 0; for (let i=0;i<actual.length;i++) diff |= actual[i]^exp[i];
+  return diff === 0;
+}
+async function createSession(userId: string) {
+  const token = randomToken();
+  const tokenHash = await sha256(token);
+  await sql`insert into sessions(user_id, token_hash, expires_at) values(${userId}::uuid, ${tokenHash}, now() + interval '12 hours')`;
+  return token;
+}
+async function currentUser(req: Request) {
+  const token = cookie(req, 'ampa_session');
+  if (!token) return null;
+  const tokenHash = await sha256(token);
+  const rows = await sql`
+    select u.id, u.username, u.email, u.name, u.role, u.is_active, u.last_login_at
+    from sessions s join app_users u on u.id=s.user_id
+    where s.token_hash=${tokenHash} and s.expires_at>now() and u.is_active=true limit 1
+  `;
+  return rows[0] || null;
+}
+async function requireUser(req: Request) {
+  const u = await currentUser(req);
+  if (!u) throw Object.assign(new Error('UNAUTHORIZED'), { status: 401 });
+  return u;
+}
+async function requireRole(req: Request, roles: string[]) {
+  const u = await requireUser(req);
+  if (!roles.includes(u.role)) throw Object.assign(new Error('FORBIDDEN'), { status: 403 });
+  return u;
+}
+async function log(userId: string | null, entityType: string, action: string, summary: string, entityId?: string|null, entityLabel?: string|null) {
+  await sql`insert into activity_log(user_id,entity_type,entity_id,entity_label,action,summary)
+    values(${userId}::uuid,${entityType},${entityId || null},${entityLabel || null},${action},${summary})`;
+}
+function isoFromDDMMAAAA(raw?: string) {
+  const d = String(raw || '').replace(/\D/g,'');
+  return d.length===8 ? `${d.slice(4,8)}-${d.slice(2,4)}-${d.slice(0,2)}` : null;
+}
+function ddmmyyyyFromIso(v: any) {
+  if (!v) return '';
+  const s = String(v).slice(0,10);
+  const [y,m,d] = s.split('-');
+  return y && m && d ? `${d}${m}${y}` : '';
+}
+function safeUser(u:any) {
+  return { id:u.id, username:u.username, email:u.email, name:u.name, role:u.role, isActive:u.is_active, lastLoginAt:u.last_login_at };
+}
+async function readBody(req: Request) {
+  try { return await req.json(); } catch { return {}; }
+}
+async function loadFamilies() {
+  const [families, guardians, students, renewals] = await Promise.all([
+    sql`select * from families order by family_name`,
+    sql`select * from guardians order by created_at`,
+    sql`select * from students order by created_at`,
+    sql`select * from renewals order by academic_year`,
+  ]);
+  return families.map((f:any)=>({
+    id:f.id, membershipNumber:f.membership_number, familyName:f.family_name,
+    isActiveThisYear:f.is_active_this_year, registrationAcademicYear:f.registration_academic_year,
+    registrationDate:String(f.registration_date).slice(0,10), address:{street:f.street,city:f.city,postalCode:f.postal_code},
+    notes:f.notes || '', updatedAt:f.updated_at,
+    activeYears:renewals.filter((r:any)=>r.family_id===f.id && r.status==='renewed').map((r:any)=>r.academic_year),
+    guardians:guardians.filter((g:any)=>g.family_id===f.id).map((g:any)=>({
+      id:g.id, fullName:[g.first_name,g.last_name].filter(Boolean).join(' '), firstName:g.first_name,lastName:g.last_name,
+      relationship:g.relationship,dni:g.dni||'',phone:g.phone||'',email:g.email||'',isMainContact:g.is_main_contact,
+      birthDateDDMMAAAA:ddmmyyyyFromIso(g.birth_date),communicationsConsent:g.communications_consent,privacyConsent:g.privacy_consent
+    })),
+    students:students.filter((s:any)=>s.family_id===f.id).map((s:any)=>({
+      id:s.id,firstName:s.first_name,lastName:s.last_name,dni:s.dni||'',birthDateDDMMAAAA:ddmmyyyyFromIso(s.birth_date),
+      birthYear:s.birth_year||0,courseOffset:s.course_offset,groupLetter:s.group_letter||'',academicYear:s.academic_year,
+      school:s.school||'',className:s.class_name||'',allergies:s.allergies||'',specialNeeds:s.special_needs||'',authorizedPhoto:s.authorized_photo
+    }))
+  }));
+}
+async function replaceMembers(tx:any, familyId:string, body:any) {
+  await tx`delete from guardians where family_id=${familyId}::uuid`;
+  await tx`delete from students where family_id=${familyId}::uuid`;
+  for (const g of body.guardians || []) {
+    await tx`insert into guardians(family_id,first_name,last_name,relationship,dni,birth_date,phone,email,is_main_contact,communications_consent,privacy_consent)
+      values(${familyId}::uuid,${g.firstName||''},${g.lastName||''},${g.relationship||'otro'},${g.dni||null},
+      ${isoFromDDMMAAAA(g.birthDateDDMMAAAA)||g.birthDate||null}::date,${g.phone||null},${g.email||null},${!!g.isMainContact},${g.communicationsConsent??null},${g.privacyConsent??null})`;
+  }
+  for (const s of body.students || []) {
+    await tx`insert into students(family_id,first_name,last_name,dni,birth_date,birth_year,course_offset,group_letter,academic_year,school,class_name,allergies,special_needs,authorized_photo)
+      values(${familyId}::uuid,${s.firstName||''},${s.lastName||''},${s.dni||null},
+      ${isoFromDDMMAAAA(s.birthDateDDMMAAAA)||s.birthDate||null}::date,${s.birthYear||null},${s.courseOffset||0},${s.groupLetter||''},
+      ${s.academicYear||null},${s.school||null},${s.className||null},${s.allergies||null},${s.specialNeeds||null},${!!s.authorizedPhoto})`;
+  }
+}
+async function replaceRenewals(tx:any, familyId:string, years:string[], userId:string) {
+  await tx`delete from renewals where family_id=${familyId}::uuid`;
+  for (const year of years || []) {
+    await tx`insert into renewals(family_id,academic_year,status,renewed_at,renewed_by)
+      values(${familyId}::uuid,${year},'renewed',now(),${userId}::uuid)`;
+  }
+}
+
+Deno.serve(async (req: Request) => {
+  const path = pathOf(req);
+  try {
+    if (req.method === 'GET' && path === '/health') {
+      const rows = await sql`select count(*)::int as users from app_users`;
+      return reply({ ok:true, database:'connected', users:rows[0]?.users || 0, mode:'supabase-edge' });
+    }
+
+    if (req.method === 'POST' && path === '/setup/bootstrap') {
+      const body = await readBody(req);
+      const count = await sql`select count(*)::int as count from app_users`;
+      if ((count[0]?.count || 0) > 0) return reply({error:'ALREADY_INITIALIZED'},409);
+      const cfg = await sql`select value from app_settings where key='bootstrap'`;
+      const expected = cfg[0]?.value?.codeHash;
+      if (!expected || !body.code || await sha256(String(body.code)) !== expected) return reply({error:'INVALID_SETUP_CODE'},403);
+      if (!body.username || !body.name || !body.password || String(body.password).length < 12) return reply({error:'INVALID_SETUP_DATA'},400);
+      const hash = await hashPassword(String(body.password));
+      const [u] = await sql.begin(async tx => {
+        const created = await tx`insert into app_users(username,email,name,role,password_hash,is_active)
+          values(${String(body.username).trim()},${body.email ? String(body.email).trim() : null},${String(body.name).trim()},'superadmin',${hash},true)
+          returning *`;
+        await tx`delete from app_settings where key='bootstrap'`;
+        return created;
+      });
+      await log(u.id,'user','create','Superadministrador inicial creado',u.id,u.name);
+      const token = await createSession(u.id);
+      return reply({user:safeUser(u)},201,{'set-cookie':setCookie(token)});
+    }
+
+    if (req.method === 'POST' && path === '/auth/login') {
+      const body = await readBody(req);
+      const q = String(body.username || '').trim();
+      if (!q || !body.password) return reply({error:'MISSING_CREDENTIALS'},400);
+      let rows = await sql`select * from app_users where lower(username)=lower(${q}) limit 1`;
+      if (!rows.length) rows = await sql`select * from app_users where lower(coalesce(email,''))=lower(${q}) limit 1`;
+      const u = rows[0];
+      if (!u || !u.is_active || !await verifyPassword(String(body.password),u.password_hash)) return reply({error:'INVALID_CREDENTIALS'},401);
+      await sql`update app_users set last_login_at=now(),updated_at=now() where id=${u.id}::uuid`;
+      await sql`delete from sessions where expires_at < now()`;
+      const token = await createSession(u.id);
+      await log(u.id,'user','login','Inicio de sesión',u.id,u.name);
+      return reply({user:safeUser({...u,last_login_at:new Date().toISOString()})},200,{'set-cookie':setCookie(token)});
+    }
+
+    if (req.method === 'GET' && path === '/auth/me') {
+      const u = await requireUser(req); return reply({user:safeUser(u)});
+    }
+    if (req.method === 'POST' && path === '/auth/logout') {
+      const token = cookie(req,'ampa_session');
+      if (token) await sql`delete from sessions where token_hash=${await sha256(token)}`;
+      return reply({ok:true},200,{'set-cookie':clearCookie()});
+    }
+    if (req.method === 'POST' && path === '/auth/change-password') {
+      const u = await requireUser(req); const body = await readBody(req);
+      const rows = await sql`select password_hash from app_users where id=${u.id}::uuid`;
+      if (!body.currentPassword || !body.newPassword || String(body.newPassword).length < 12) return reply({error:'INVALID_PASSWORD'},400);
+      if (!rows[0] || !await verifyPassword(String(body.currentPassword),rows[0].password_hash)) return reply({error:'INVALID_CREDENTIALS'},401);
+      const hash = await hashPassword(String(body.newPassword));
+      await sql`update app_users set password_hash=${hash},updated_at=now() where id=${u.id}::uuid`;
+      await sql`delete from sessions where user_id=${u.id}::uuid`;
+      return reply({ok:true},200,{'set-cookie':clearCookie()});
+    }
+
+    if (path === '/families' && req.method === 'GET') {
+      await requireUser(req); return reply({families:await loadFamilies()});
+    }
+    if (path === '/families' && req.method === 'POST') {
+      const u = await requireRole(req,['superadmin','admin']); const body = await readBody(req);
+      if (!body.membershipNumber || !body.familyName) return reply({error:'INVALID_FAMILY'},400);
+      const id = await sql.begin(async tx => {
+        const created = await tx`insert into families(membership_number,family_name,is_active_this_year,registration_academic_year,registration_date,street,city,postal_code,notes)
+          values(${body.membershipNumber},${body.familyName},${!!body.isActiveThisYear},${body.registrationAcademicYear||null},${body.registrationDate||new Date().toISOString().slice(0,10)}::date,
+          ${body.address?.street||''},${body.address?.city||''},${body.address?.postalCode||''},${body.notes||null}) returning id`;
+        const fid = created[0].id; await replaceMembers(tx,fid,body); await replaceRenewals(tx,fid,body.activeYears||[],u.id); return fid;
+      });
+      await log(u.id,'family','create',`Familia dada de alta: ${body.familyName}`,id,body.familyName);
+      return reply({id},201);
+    }
+    const familyMatch = path.match(/^\/families\/([0-9a-f-]+)$/i);
+    if (familyMatch && req.method === 'PUT') {
+      const u = await requireRole(req,['superadmin','admin']); const body = await readBody(req); const id=familyMatch[1];
+      await sql.begin(async tx => {
+        await tx`update families set membership_number=${body.membershipNumber},family_name=${body.familyName},is_active_this_year=${!!body.isActiveThisYear},
+          registration_academic_year=${body.registrationAcademicYear||null},registration_date=${body.registrationDate}::date,street=${body.address?.street||''},
+          city=${body.address?.city||''},postal_code=${body.address?.postalCode||''},notes=${body.notes||null},updated_at=now() where id=${id}::uuid`;
+        await replaceMembers(tx,id,body); await replaceRenewals(tx,id,body.activeYears||[],u.id);
+      });
+      await log(u.id,'family','update',`Ficha modificada: ${body.familyName}`,id,body.familyName); return reply({ok:true});
+    }
+    if (familyMatch && req.method === 'DELETE') {
+      const u=await requireRole(req,['superadmin']); const id=familyMatch[1];
+      const rows=await sql`delete from families where id=${id}::uuid returning family_name`;
+      await log(u.id,'family','delete',`Familia eliminada: ${rows[0]?.family_name||id}`,id,rows[0]?.family_name||null); return reply({ok:true});
+    }
+
+    if (path === '/renewals' && req.method === 'POST') {
+      const u=await requireRole(req,['superadmin','admin']); const body=await readBody(req);
+      if (!body.familyId || !body.academicYear || !['renewed','pending','inactive'].includes(body.status)) return reply({error:'INVALID_RENEWAL'},400);
+      await sql.begin(async tx => {
+        await tx`insert into renewals(family_id,academic_year,status,renewed_at,renewed_by)
+          values(${body.familyId}::uuid,${body.academicYear},${body.status},case when ${body.status}='renewed' then now() else null end,${u.id}::uuid)
+          on conflict(family_id,academic_year) do update set status=excluded.status,renewed_at=excluded.renewed_at,renewed_by=excluded.renewed_by,updated_at=now()`;
+        await tx`update families set is_active_this_year=${body.status==='renewed'},updated_at=now() where id=${body.familyId}::uuid`;
+      });
+      await log(u.id,'family',body.status==='renewed'?'renew':'deactivate',`Renovación ${body.status}: ${body.academicYear}`,body.familyId,null); return reply({ok:true});
+    }
+
+    if (path === '/settings' && req.method === 'GET') {
+      await requireUser(req); const rows=await sql`select value from app_settings where key='general'`; return reply({settings:rows[0]?.value||{}});
+    }
+    if (path === '/settings' && req.method === 'PUT') {
+      const u=await requireRole(req,['superadmin','admin']); const body=await readBody(req);
+      await sql`insert into app_settings(key,value,updated_at) values('general',${JSON.stringify(body)}::jsonb,now())
+        on conflict(key) do update set value=excluded.value,updated_at=now()`;
+      await log(u.id,'settings','settings',`Ajustes actualizados. Curso: ${body.activeAcademicYear||'—'}`); return reply({settings:body});
+    }
+
+    if (path === '/activity' && req.method === 'GET') {
+      await requireUser(req); const url=new URL(req.url); const entityId=url.searchParams.get('entityId');
+      const rows = entityId
+        ? await sql`select a.*,u.name as user_name from activity_log a left join app_users u on u.id=a.user_id where a.entity_id=${entityId} order by a.created_at desc limit 300`
+        : await sql`select a.*,u.name as user_name from activity_log a left join app_users u on u.id=a.user_id order by a.created_at desc limit 300`;
+      return reply({activity:rows.map((a:any)=>({id:a.id,userId:a.user_id,userName:a.user_name||'Sistema',timestamp:a.created_at,entityType:a.entity_type,entityId:a.entity_id,entityLabel:a.entity_label,action:a.action,summary:a.summary}))});
+    }
+
+    if (path === '/users' && req.method === 'GET') {
+      await requireRole(req,['superadmin']); const rows=await sql`select id,username,email,name,role,is_active,last_login_at,created_at from app_users order by name`; return reply({users:rows.map(safeUser)});
+    }
+    if (path === '/users' && req.method === 'POST') {
+      const u=await requireRole(req,['superadmin']); const body=await readBody(req);
+      if (!body.username || !body.name || !body.password || String(body.password).length<12 || !['superadmin','admin','user'].includes(body.role)) return reply({error:'INVALID_USER'},400);
+      const hash=await hashPassword(String(body.password));
+      const rows=await sql`insert into app_users(username,email,name,role,password_hash,is_active) values(${body.username},${body.email||null},${body.name},${body.role},${hash},true) returning *`;
+      await log(u.id,'user','create',`Usuario creado: ${body.name}`,rows[0].id,body.name); return reply({user:safeUser(rows[0])},201);
+    }
+    const userMatch=path.match(/^\/users\/([0-9a-f-]+)$/i);
+    if (userMatch && req.method === 'PATCH') {
+      const u=await requireRole(req,['superadmin']); const body=await readBody(req); const id=userMatch[1];
+      if (id===u.id && body.isActive===false) return reply({error:'CANNOT_DISABLE_SELF'},400);
+      if (body.password) {
+        if (String(body.password).length<12) return reply({error:'INVALID_PASSWORD'},400);
+        await sql`update app_users set password_hash=${await hashPassword(String(body.password))},updated_at=now() where id=${id}::uuid`;
+        await sql`delete from sessions where user_id=${id}::uuid`;
+      }
+      if (body.role && !['superadmin','admin','user'].includes(body.role)) return reply({error:'INVALID_ROLE'},400);
+      await sql`update app_users set name=coalesce(${body.name||null},name),email=coalesce(${body.email||null},email),role=coalesce(${body.role||null},role),
+        is_active=coalesce(${typeof body.isActive==='boolean'?body.isActive:null},is_active),updated_at=now() where id=${id}::uuid`;
+      const rows=await sql`select * from app_users where id=${id}::uuid`; await log(u.id,'user','update',`Usuario actualizado: ${rows[0]?.name||id}`,id,rows[0]?.name||null);
+      return reply({user:safeUser(rows[0])});
+    }
+
+    return reply({error:'NOT_FOUND',path},404);
+  } catch (error:any) {
+    console.error(error);
+    return reply({error:error?.message||'INTERNAL_ERROR'},error?.status||500);
+  }
+});
