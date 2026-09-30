@@ -23,6 +23,10 @@ function pathOf(req: Request) {
     const slash = rest.indexOf('/');
     return slash >= 0 ? rest.slice(slash) || '/' : '/';
   }
+  const parts = p.split('/').filter(Boolean);
+  if (parts[0]?.startsWith('ampa-api')) {
+    return '/' + parts.slice(1).join('/');
+  }
   return p || '/';
 }
 function cookie(req: Request, name: string) {
