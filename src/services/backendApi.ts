@@ -66,4 +66,18 @@ export const backendApi = {
     request<{ id:string }>('/api/backups', { method:'POST', body:JSON.stringify({ reason }) }),
   restoreBackup: (id:string, confirmation:string) =>
     request<{ ok:boolean }>('/api/backups/restore', { method:'POST', body:JSON.stringify({ id, confirmation }) }),
+
+  sendFamilyDocument: (payload: {
+    familyId: string;
+    guardianId: string;
+    subject: string;
+    message: string;
+    filename: string;
+    mimeType: string;
+    contentBase64: string;
+    documentType: 'membership-card';
+  }) => request<{ ok:boolean; to:string; messageId?:string }>('/api/email/family-document', {
+    method:'POST',
+    body:JSON.stringify(payload),
+  }),
 };
