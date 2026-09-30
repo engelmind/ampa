@@ -16,9 +16,14 @@ function reply(body: unknown, status = 200, extraHeaders: Record<string,string> 
 }
 function pathOf(req: Request) {
   const p = new URL(req.url).pathname;
-  const i = p.indexOf('/ampa-api');
-  const suffix = i >= 0 ? p.slice(i + '/ampa-api'.length) : p;
-  return suffix || '/';
+  const marker = '/functions/v1/';
+  const i = p.indexOf(marker);
+  if (i >= 0) {
+    const rest = p.slice(i + marker.length);
+    const slash = rest.indexOf('/');
+    return slash >= 0 ? rest.slice(slash) || '/' : '/';
+  }
+  return p || '/';
 }
 function cookie(req: Request, name: string) {
   const raw = req.headers.get('cookie') || '';
