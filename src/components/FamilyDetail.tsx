@@ -3,7 +3,9 @@ import { CalendarDays, History, Mail, MapPin, Phone, ShieldCheck, UserRound, Gra
 import { ActivityLogEntry, Family, SystemSettings } from '../types/family';
 import { calculateStudentCourse } from '../utils/academicCourse';
 import { parseDDMMAAAA } from '../utils/dateUtils';
-import { generateMembershipCardPdf } from '../utils/pdfExportUtils';
+import { createMembershipCardPdfArtifact, PdfArtifact } from '../utils/pdfExportUtils';
+import { PdfPreviewModal } from './PdfPreviewModal';
+import { EmailCardModal } from './EmailCardModal';
 import { getFamilyDataIssues } from '../utils/dataQuality';
 
 type Section = 'family' | 'students' | 'history' | 'privacy';
@@ -18,15 +20,30 @@ interface Props {
   onToggleRenewal: () => void;
   canDelete?: boolean;
   onDelete?: () => void;
+  onNotify?: (type:'success'|'error'|'info',title:string,message?:string)=>void;
 }
 
-export function FamilyDetail({ family, settings, activity, canEdit, onClose, onEdit, onToggleRenewal, canDelete, onDelete }: Props) {
+export function FamilyDetail({ family, settings, activity, canEdit, onClose, onEdit, onToggleRenewal, canDelete, onDelete, onNotify }: Props) {
   const [section, setSection] = useState<Section>('family');
+  const [cardArtifact,setCardArtifact]=useState<PdfArtifact|null>(null);
+  const [showEmail,setShowEmail]=useState(false);
+  const [buildingCard,setBuildingCard]=useState(false);
   const issues = useMemo(()=>getFamilyDataIssues(family),[family]);
   const familyActivity = useMemo(
     () => activity.filter((a) => a.entityType === 'family' && a.entityId === family.id),
     [activity, family.id]
   );
+
+  const openCardPreview = async () => {
+    setBuildingCard(true);
+    try {
+      setCardArtifact(await createMembershipCardPdfArtifact(family,settings.activeAcademicYear,settings.associationName));
+    } catch {
+      onNotify?.('error','No se pudo generar el carnet');
+    } finally {
+      setBuildingCard(false);
+    }
+  };
 
   const sections: Array<[Section, string, React.ComponentType<{ size?: number }>]> = [
     ['family', 'Familia', UserRound],
@@ -36,6 +53,9 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
   ];
 
   return (
+    <>
+      {cardArtifact && <PdfPreviewModal artifact={cardArtifact} onClose={()=>setCardArtifact(null)} onEmail={()=>setShowEmail(true)} emailLabel="Enviar carnet"/>}
+      {cardArtifact && showEmail && <EmailCardModal family={family} artifact={cardArtifact} academicYear={settings.activeAcademicYear} onClose={()=>setShowEmail(false)} onSent={(recipient)=>onNotify?.('success','Carnet enviado',recipient)}/>}
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4">
       <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
         <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 backdrop-blur">
@@ -177,7 +197,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
           )}
 
           <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-            <button type="button" onClick={()=>generateMembershipCardPdf(family,settings.activeAcademicYear,settings.associationName)} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><CreditCard size={15}/> Carnet PDF</button>
+            <button type="button" disabled={buildingCard} onClick={()=>void openCardPreview()} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold disabled:opacity-50"><CreditCard size={15}/>{buildingCard?'Generando…':'Carnet'}</button>
             {canDelete && onDelete && <button type="button" onClick={onDelete} className="flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 text-xs font-bold text-rose-700"><Trash2 size={15}/> Eliminar</button>}
             {canEdit && <button type="button" onClick={onEdit} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar familia</button>}
             {canEdit && <button type="button" onClick={onToggleRenewal} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{family.isActiveThisYear ? 'Marcar no renovada' : 'Registrar renovación'}</button>}
@@ -185,5 +205,6 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
         </div>
       </div>
     </div>
+    </>
   );
 }
