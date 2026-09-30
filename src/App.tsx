@@ -379,6 +379,21 @@ export default function App() {
     }
   };
 
+  const deleteFamily = async (family: Family) => {
+    if (currentUser?.role !== 'superadmin') return;
+    const confirmation = window.prompt(`Para eliminar definitivamente la familia ${family.familyName}, escribe su número de socio: ${family.membershipNumber}`);
+    if (confirmation !== family.membershipNumber) return;
+    try {
+      await backendApi.createBackup('pre-delete');
+      await backendApi.deleteFamily(family.id);
+      await loadWorkspace();
+      setSelected(null);
+      toast('success','Familia eliminada',`Se ha creado una copia previa a la eliminación de ${family.membershipNumber}.`);
+    } catch (error:any) {
+      toast('error','No se pudo eliminar la familia',error?.message);
+    }
+  };
+
   const downloadCSV = () => {
     const csv = exportToCSV(filtered, settings.activeAcademicYear);
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
@@ -619,6 +634,8 @@ export default function App() {
           onClose={() => setSelected(null)}
           onEdit={() => { setEditing(hydrateFamilyForEditing(selected)); setSelected(null); }}
           onToggleRenewal={() => toggleActive(selected.id)}
+          canDelete={currentUser.role === 'superadmin'}
+          onDelete={() => void deleteFamily(selected)}
         />
       )}
 
