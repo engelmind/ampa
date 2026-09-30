@@ -167,6 +167,70 @@ async function replaceRenewals(tx:any, familyId:string, years:string[], userId:s
   }
 }
 
+
+async function upsertImportedFamily(tx:any, body:any, userId:string) {
+  const existing = await tx`select id from families where membership_number=${body.membershipNumber} limit 1`;
+  let id:string;
+  if (existing.length) {
+    id = existing[0].id;
+    await tx`update families set family_name=${body.familyName},is_active_this_year=${!!body.isActiveThisYear},
+      registration_academic_year=${body.registrationAcademicYear||null},registration_date=${body.registrationDate||new Date().toISOString().slice(0,10)}::date,
+      street=${body.address?.street||''},city=${body.address?.city||''},postal_code=${body.address?.postalCode||''},
+      notes=${body.notes||null},updated_at=now() where id=${id}::uuid`;
+  } else {
+    const created = await tx`insert into families(membership_number,family_name,is_active_this_year,registration_academic_year,registration_date,street,city,postal_code,notes)
+      values(${body.membershipNumber},${body.familyName},${!!body.isActiveThisYear},${body.registrationAcademicYear||null},
+      ${body.registrationDate||new Date().toISOString().slice(0,10)}::date,${body.address?.street||''},${body.address?.city||''},
+      ${body.address?.postalCode||''},${body.notes||null}) returning id`;
+    id = created[0].id;
+  }
+  await replaceMembers(tx,id,body);
+  await replaceRenewals(tx,id,body.activeYears||[],userId);
+  return id;
+}
+
+async function restoreSnapshot(snapshotId:string, userId:string) {
+  const rows = await sql`select payload from ampa_private.backup_snapshots where id=${snapshotId}::uuid limit 1`;
+  if (!rows.length) throw Object.assign(new Error('BACKUP_NOT_FOUND'), {status:404});
+  const payload = rows[0].payload || {};
+  await sql.begin(async tx => {
+    await tx`delete from renewals`;
+    await tx`delete from guardians`;
+    await tx`delete from students`;
+    await tx`delete from families`;
+
+    for (const f of payload.families || []) {
+      await tx`insert into families(id,membership_number,family_name,is_active_this_year,registration_academic_year,registration_date,street,city,postal_code,notes,created_at,updated_at)
+        values(${f.id}::uuid,${f.membership_number},${f.family_name},${!!f.is_active_this_year},${f.registration_academic_year||null},
+        ${f.registration_date}::date,${f.street||''},${f.city||''},${f.postal_code||''},${f.notes||null},
+        ${f.created_at||new Date().toISOString()}::timestamptz,${f.updated_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const g of payload.guardians || []) {
+      await tx`insert into guardians(id,family_id,first_name,last_name,relationship,dni,birth_date,phone,email,is_main_contact,communications_consent,privacy_consent,created_at,updated_at)
+        values(${g.id}::uuid,${g.family_id}::uuid,${g.first_name},${g.last_name||''},${g.relationship},${g.dni||null},
+        ${g.birth_date||null}::date,${g.phone||null},${g.email||null},${!!g.is_main_contact},${g.communications_consent??null},
+        ${g.privacy_consent??null},${g.created_at||new Date().toISOString()}::timestamptz,${g.updated_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const s of payload.students || []) {
+      await tx`insert into students(id,family_id,first_name,last_name,dni,birth_date,birth_year,course_offset,group_letter,academic_year,school,class_name,allergies,special_needs,authorized_photo,created_at,updated_at)
+        values(${s.id}::uuid,${s.family_id}::uuid,${s.first_name},${s.last_name||''},${s.dni||null},${s.birth_date||null}::date,
+        ${s.birth_year||null},${s.course_offset||0},${s.group_letter||''},${s.academic_year||null},${s.school||null},${s.class_name||null},
+        ${s.allergies||null},${s.special_needs||null},${!!s.authorized_photo},${s.created_at||new Date().toISOString()}::timestamptz,
+        ${s.updated_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const r of payload.renewals || []) {
+      await tx`insert into renewals(id,family_id,academic_year,status,renewed_at,renewed_by,created_at,updated_at)
+        values(${r.id}::uuid,${r.family_id}::uuid,${r.academic_year},${r.status},${r.renewed_at||null}::timestamptz,
+        ${r.renewed_by||null}::uuid,${r.created_at||new Date().toISOString()}::timestamptz,${r.updated_at||new Date().toISOString()}::timestamptz)`;
+    }
+    if (payload.settings) {
+      await tx`insert into app_settings(key,value,updated_at) values('general',${JSON.stringify(payload.settings)}::jsonb,now())
+        on conflict(key) do update set value=excluded.value,updated_at=now()`;
+    }
+  });
+  await log(userId,'settings','import','Copia de seguridad restaurada',snapshotId,'backup');
+}
+
 Deno.serve(async (req: Request) => {
   const path = pathOf(req);
   try {
@@ -316,6 +380,45 @@ Deno.serve(async (req: Request) => {
         is_active=coalesce(${typeof body.isActive==='boolean'?body.isActive:null},is_active),updated_at=now() where id=${id}::uuid`;
       const rows=await sql`select * from app_users where id=${id}::uuid`; await log(u.id,'user','update',`Usuario actualizado: ${rows[0]?.name||id}`,id,rows[0]?.name||null);
       return reply({user:safeUser(rows[0])});
+    }
+
+
+    if (path === '/imports' && req.method === 'POST') {
+      const u = await requireRole(req,['superadmin','admin']);
+      const body = await readBody(req);
+      if (!Array.isArray(body.families) || body.families.length > 5000) return reply({error:'INVALID_IMPORT'},400);
+      if (body.mode === 'replace' && u.role !== 'superadmin') return reply({error:'FORBIDDEN'},403);
+      for (const f of body.families) if (!f.membershipNumber || !f.familyName) return reply({error:'INVALID_IMPORT_ROW'},400);
+      await sql`select ampa_private.create_snapshot('pre-import', ${u.id}::uuid)`;
+      await sql.begin(async tx => {
+        if (body.mode === 'replace') await tx`delete from families`;
+        for (const family of body.families) await upsertImportedFamily(tx,family,u.id);
+      });
+      await log(u.id,'import','import',`Importadas ${body.families.length} familias`,null,'importación');
+      return reply({ok:true,imported:body.families.length});
+    }
+
+    if (path === '/backups' && req.method === 'GET') {
+      await requireRole(req,['superadmin']);
+      const rows = await sql`select b.id,b.created_at,b.reason,u.name as created_by_name
+        from ampa_private.backup_snapshots b left join app_users u on u.id=b.created_by
+        order by b.created_at desc limit 30`;
+      return reply({backups:rows.map((b:any)=>({id:b.id,createdAt:b.created_at,reason:b.reason,createdByName:b.created_by_name}))});
+    }
+    if (path === '/backups' && req.method === 'POST') {
+      const u = await requireRole(req,['superadmin']);
+      const body = await readBody(req);
+      const rows = await sql`select ampa_private.create_snapshot(${String(body.reason||'manual')}, ${u.id}::uuid) as id`;
+      await log(u.id,'export','export','Copia de seguridad interna creada',rows[0]?.id,'backup');
+      return reply({id:rows[0]?.id},201);
+    }
+    if (path === '/backups/restore' && req.method === 'POST') {
+      const u = await requireRole(req,['superadmin']);
+      const body = await readBody(req);
+      if (!body.id || body.confirmation !== 'RESTAURAR COPIA') return reply({error:'CONFIRMATION_REQUIRED'},400);
+      await sql`select ampa_private.create_snapshot('pre-restore', ${u.id}::uuid)`;
+      await restoreSnapshot(String(body.id),u.id);
+      return reply({ok:true});
     }
 
     return reply({error:'NOT_FOUND',path},404);
