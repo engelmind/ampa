@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
   UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
-  AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby
+  AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby, Activity, BarChart3,
+  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning
 } from 'lucide-react';
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import { exportToCSV } from './utils/exportUtils';
@@ -185,6 +186,17 @@ export default function App() {
     setFamilies(familiesResult.families);
     setSettings({ ...defaultSettings, ...settingsResult.settings });
     setActivity(activityResult.activity);
+
+    const memberFromQr = new URLSearchParams(window.location.search).get('socio');
+    if (memberFromQr) {
+      const matched = familiesResult.families.find((family) =>
+        family.membershipNumber.toLowerCase() === memberFromQr.toLowerCase()
+      );
+      if (matched) {
+        setSelected(matched);
+        setTab('families');
+      }
+    }
   };
 
   const acceptAuthenticatedUser = async (user: AppUser) => {
@@ -248,6 +260,40 @@ export default function App() {
   const studentCount = families.reduce((n, f) => n + f.students.length, 0);
   const pendingCount = families.length - activeCount;
   const incompleteFamilies = families.filter((f)=>getFamilyDataIssues(f).length>0);
+  const renewalRate = families.length ? Math.round((activeCount / families.length) * 100) : 0;
+  const contactableCount = families.filter((family) => {
+    const guardian = family.guardians.find((g)=>g.isMainContact) || family.guardians[0];
+    return !!(guardian?.phone || guardian?.email);
+  }).length;
+  const contactRate = families.length ? Math.round((contactableCount / families.length) * 100) : 0;
+  const allGuardians = families.flatMap((family)=>family.guardians);
+  const privacyRate = allGuardians.length
+    ? Math.round((allGuardians.filter((guardian)=>guardian.privacyConsent === true).length / allGuardians.length) * 100)
+    : 0;
+  const completeRate = families.length ? Math.round(((families.length - incompleteFamilies.length) / families.length) * 100) : 0;
+  const averageStudents = families.length ? (studentCount / families.length).toFixed(1) : '0.0';
+  const recentRegistrations = families.filter((family) => {
+    const created = new Date(family.registrationDate).getTime();
+    return Number.isFinite(created) && created >= Date.now() - 30 * 24 * 60 * 60 * 1000;
+  }).length;
+
+  const courseBreakdown = useMemo(() => {
+    const map = new Map<string,{ label:string; count:number; order:number }>();
+    families.flatMap((family)=>family.students).forEach((student) => {
+      const calculated = calculateStudentCourse(student,settings.activeAcademicYear);
+      const key = calculated.fullDisplay;
+      const current = map.get(key);
+      map.set(key,{
+        label:key,
+        count:(current?.count || 0) + 1,
+        order:calculated.isGraduated ? 99 : calculated.ageInAcademicYear,
+      });
+    });
+    return Array.from(map.values()).sort((a,b)=>a.order-b.order || a.label.localeCompare(b.label,'es'));
+  },[families,settings.activeAcademicYear]);
+
+  const maxCourseCount = Math.max(1,...courseBreakdown.map((item)=>item.count));
+  const recentActivity = activity.slice(0,7);
 
   if (bootState === 'loading') {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-center text-white"><AmpaLogo inverted className="mx-auto h-16 w-auto"/><p className="mt-5 text-sm text-slate-300">Conectando con la base de datos…</p></div></div>;
@@ -468,79 +514,126 @@ export default function App() {
 
         <main className="min-w-0">
           {tab === 'dashboard' && (
-            <div className="space-y-6">
-              <section className="flex flex-col justify-between gap-4 rounded-3xl bg-slate-900 p-6 text-white sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Resumen operativo</p>
-                  <h1 className="mt-2 text-2xl font-black">AMPA Agustinos Granada</h1>
-                  <p className="mt-1 max-w-2xl text-sm text-slate-300">Consulta el estado del censo, controla renovaciones y accede rápidamente a las tareas habituales.</p>
+            <div className="space-y-5">
+              <section className="overflow-hidden rounded-3xl bg-slate-950 text-white">
+                <div className="grid gap-6 p-6 lg:grid-cols-[1.45fr_.85fr] lg:p-7">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Panel operativo · Curso {settings.activeAcademicYear}</p>
+                    <h1 className="mt-2 text-2xl font-black sm:text-3xl">AMPA Agustinos Granada</h1>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Censo, renovaciones, calidad de datos y situación académica de los alumnos en una única vista.</p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold hover:bg-rose-500"><Plus size={16}/> Nueva familia</button>}
+                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><Clock3 size={16}/> Renovaciones pendientes</button>
+                      <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><FileWarning size={16}/> Revisar fichas</button>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                    <div className="flex items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Renovación del curso</div><div className="mt-1 text-4xl font-black">{renewalRate}%</div></div><div className="text-right text-xs text-slate-300"><strong className="text-white">{activeCount}</strong> de {families.length}<br/>familias activas</div></div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${renewalRate}%`}}/></div>
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{studentCount}</div><div className="text-[9px] uppercase text-slate-400">Alumnos</div></div>
+                      <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{recentRegistrations}</div><div className="text-[9px] uppercase text-slate-400">Altas 30 días</div></div>
+                      <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{averageStudents}</div><div className="text-[9px] uppercase text-slate-400">Hijos/familia</div></div>
+                    </div>
+                  </div>
                 </div>
-                {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold hover:bg-rose-500"><Plus size={18}/> Nueva familia</button>}
               </section>
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {[
-                  ['Familias', families.length, Users, 'Censo total'],
-                  ['Activas', activeCount, CheckCircle2, 'Renovadas este curso'],
-                  ['Pendientes', pendingCount, Clock3, 'Sin renovación'],
-                  ['Alumnos', studentCount, GraduationCap, 'Hijos registrados'],
-                ].map(([label, value, Icon, hint]: any) => (
+                  ['Familias',families.length,Users,'Censo total'],
+                  ['Pendientes',pendingCount,Clock3,'Renovación'],
+                  ['Contacto',`${contactRate}%`,ContactRound,'Teléfono o email'],
+                  ['Privacidad',`${privacyRate}%`,ShieldCheck,'Consentimientos'],
+                  ['Fichas completas',`${completeRate}%`,CheckCircle2,'Calidad de datos'],
+                ].map(([label,value,Icon,hint]:any)=>(
                   <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="mb-4 flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{label}</span><Icon size={18} className="text-slate-400"/></div>
-                    <div className="text-3xl font-black tracking-tight">{value}</div>
+                    <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{label}</span><Icon size={17} className="text-slate-400"/></div>
+                    <div className="mt-4 text-3xl font-black tracking-tight">{value}</div>
                     <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
                   </div>
                 ))}
               </section>
 
-              <section className="grid gap-3 lg:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3 text-sm font-extrabold">Distribución por etapas</div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(families.flatMap((f)=>f.students).reduce((acc: Record<string,number>, s) => {
-                      const stage = calculateStudentCourse(s, settings.activeAcademicYear).stageName;
-                      acc[stage] = (acc[stage] || 0) + 1;
-                      return acc;
-                    }, {})).map(([stage,count]) => <div key={stage} className="rounded-xl bg-slate-50 p-3"><div className="text-[11px] text-slate-500">{stage}</div><div className="mt-1 text-xl font-black">{count}</div></div>)}
+              <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="mb-4 flex items-center justify-between"><div><div className="flex items-center gap-2"><BarChart3 size={18}/><h2 className="text-sm font-extrabold">Distribución real por curso</h2></div><p className="mt-1 text-xs text-slate-500">Recalculada desde la fecha de nacimiento para {settings.activeAcademicYear}.</p></div><span className="text-xs font-bold text-slate-400">{studentCount} alumnos</span></div>
+                  <div className="space-y-3">
+                    {courseBreakdown.map((item)=>(
+                      <div key={item.label} className="grid grid-cols-[110px_1fr_28px] items-center gap-3">
+                        <div className="truncate text-xs font-bold text-slate-600">{item.label}</div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-900" style={{width:`${Math.max(7,(item.count/maxCourseCount)*100)}%`}}/></div>
+                        <div className="text-right text-xs font-black">{item.count}</div>
+                      </div>
+                    ))}
+                    {!courseBreakdown.length&&<div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">No hay alumnos registrados.</div>}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="mb-3 text-sm font-extrabold">Altas recientes</div>
-                  <div className="space-y-2">
-                    {[...families].sort((a,b)=>b.registrationDate.localeCompare(a.registrationDate)).slice(0,4).map((f)=><button key={f.id} onClick={()=>setSelected(f)} className="flex w-full justify-between rounded-xl bg-slate-50 p-3 text-left"><span className="text-xs font-bold">Familia {f.familyName}</span><span className="text-[10px] text-slate-400">{new Date(f.registrationDate).toLocaleDateString('es-ES')}</span></button>)}
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="mb-4 flex items-center gap-2"><TrendingUp size={18}/><h2 className="text-sm font-extrabold">Estado del censo</h2></div>
+                  <div className="space-y-4">
+                    {[
+                      ['Renovación',renewalRate],
+                      ['Contacto localizable',contactRate],
+                      ['Consentimiento privacidad',privacyRate],
+                      ['Fichas completas',completeRate],
+                    ].map(([label,value]:any)=>(
+                      <div key={label}>
+                        <div className="mb-1.5 flex justify-between text-xs"><span className="font-semibold text-slate-600">{label}</span><strong>{value}%</strong></div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-rose-500" style={{width:`${value}%`}}/></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="rounded-xl bg-amber-50 p-3 text-left"><div className="text-xl font-black text-amber-800">{pendingCount}</div><div className="text-[10px] font-bold text-amber-700">sin renovar</div></button>
+                    <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="rounded-xl bg-rose-50 p-3 text-left"><div className="text-xl font-black text-rose-800">{incompleteFamilies.length}</div><div className="text-[10px] font-bold text-rose-700">por revisar</div></button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="grid gap-4 lg:grid-cols-2">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="text-sm font-extrabold">Prioridad administrativa</h2><p className="text-xs text-slate-500">Familias pendientes o con información incompleta.</p></div><button onClick={()=>setTab('families')} className="text-xs font-bold text-rose-600">Directorio</button></div>
+                  <div className="divide-y divide-slate-100">
+                    {[...families].sort((a,b)=>{
+                      const score=(f:Family)=>(f.isActiveThisYear?0:3)+getFamilyDataIssues(f).length;
+                      return score(b)-score(a);
+                    }).filter((f)=>!f.isActiveThisYear||getFamilyDataIssues(f).length).slice(0,6).map((f)=>(
+                      <button key={f.id} onClick={()=>setSelected(f)} className="flex w-full items-center gap-3 p-3.5 text-left hover:bg-slate-50">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${f.isActiveThisYear?'bg-amber-50 text-amber-700':'bg-rose-50 text-rose-700'}`}>{f.isActiveThisYear?<AlertTriangle size={16}/>:<Clock3 size={16}/>}</div>
+                        <div className="min-w-0 flex-1"><div className="truncate text-xs font-extrabold">Familia {f.familyName}</div><div className="truncate text-[10px] text-slate-400">{!f.isActiveThisYear?'Pendiente de renovación':getFamilyDataIssues(f)[0]?.label}</div></div>
+                        <ChevronRight size={16} className="text-slate-300"/>
+                      </button>
+                    ))}
+                    {families.every((f)=>f.isActiveThisYear&&!getFamilyDataIssues(f).length)&&<div className="p-8 text-center text-sm text-slate-400">No hay tareas prioritarias.</div>}
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="flex items-center justify-between border-b border-slate-100 p-4"><div className="flex items-center gap-2"><Activity size={17}/><div><h2 className="text-sm font-extrabold">Actividad reciente</h2><p className="text-xs text-slate-500">Últimos cambios registrados en el sistema.</p></div></div></div>
+                  <div className="divide-y divide-slate-100">
+                    {recentActivity.map((entry:any)=>(
+                      <div key={entry.id} className="p-3.5">
+                        <div className="flex justify-between gap-3"><div className="text-xs font-bold text-slate-700">{entry.summary}</div><div className="shrink-0 text-[9px] text-slate-400">{new Date(entry.timestamp).toLocaleDateString('es-ES')}</div></div>
+                        <div className="mt-1 text-[10px] text-slate-400">{entry.userName}</div>
+                      </div>
+                    ))}
+                    {!recentActivity.length&&<div className="p-8 text-center text-sm text-slate-400">Sin actividad registrada.</div>}
                   </div>
                 </div>
               </section>
 
               <section className="rounded-2xl border border-slate-200 bg-white">
-                <div className="flex items-center justify-between border-b border-slate-100 p-4">
-                  <div><h2 className="text-sm font-extrabold">Fichas que requieren revisión</h2><p className="text-xs text-slate-500">Datos de contacto, domicilio, nacimiento o consentimientos incompletos.</p></div>
-                  <button type="button" onClick={() => { setQualityFilter('incomplete'); setTab('families'); }} className="text-xs font-bold text-rose-600">{incompleteFamilies.length} pendientes</button>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {incompleteFamilies.slice(0,5).map((f)=><button key={f.id} type="button" onClick={()=>setSelected(f)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-slate-50">
-                    <AlertTriangle size={16} className="text-amber-500"/>
-                    <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">Familia {f.familyName}</div><div className="text-[11px] text-slate-400">{getFamilyDataIssues(f).slice(0,2).map((i)=>i.label).join(' · ')}</div></div>
-                    <ChevronRight size={17} className="text-slate-300"/>
-                  </button>)}
-                  {!incompleteFamilies.length&&<div className="p-8 text-center text-sm text-slate-400">No hay fichas con datos pendientes.</div>}
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-slate-200 bg-white">
-                <div className="flex items-center justify-between border-b border-slate-100 p-4">
-                  <div><h2 className="text-sm font-extrabold">Pendientes de renovación</h2><p className="text-xs text-slate-500">Familias no activas en {settings.activeAcademicYear}</p></div>
-                  <button type="button" onClick={() => { setStatus('inactive'); setTab('families'); }} className="text-xs font-bold text-rose-600">Ver todas</button>
-                </div>
-                <div className="divide-y divide-slate-100">
-                  {families.filter((f) => !f.isActiveThisYear).slice(0,5).map((f) => (
-                    <button key={f.id} type="button" onClick={() => setSelected(f)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-slate-50">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 font-bold text-slate-500">{f.familyName.charAt(0)}</div>
-                      <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">Familia {f.familyName}</div><div className="text-[11px] text-slate-400">{f.membershipNumber}</div></div>
-                      <ChevronRight size={17} className="text-slate-300"/>
+                <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="text-sm font-extrabold">Altas recientes</h2><p className="text-xs text-slate-500">Últimas familias incorporadas al censo.</p></div><button onClick={()=>setTab('families')} className="flex items-center gap-1 text-xs font-bold text-rose-600">Ver directorio <ArrowRight size={13}/></button></div>
+                <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[...families].sort((a,b)=>b.registrationDate.localeCompare(a.registrationDate)).slice(0,4).map((family)=>(
+                    <button key={family.id} onClick={()=>setSelected(family)} className="rounded-xl bg-slate-50 p-3 text-left hover:bg-slate-100">
+                      <div className="text-xs font-extrabold">Familia {family.familyName}</div>
+                      <div className="mt-1 text-[10px] text-slate-400">{family.membershipNumber} · {new Date(family.registrationDate).toLocaleDateString('es-ES')}</div>
+                      <div className="mt-2 text-[10px] font-semibold text-slate-500">{family.students.length} alumno{family.students.length===1?'':'s'}</div>
                     </button>
                   ))}
-                  {pendingCount === 0 && <div className="p-8 text-center text-sm text-slate-400">Todas las familias están renovadas.</div>}
                 </div>
               </section>
             </div>
