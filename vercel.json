@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://dpsautgagaclgxbhzoch.supabase.co/functions/v1/ampa-api/:path*"
+      "destination": "https://dpsautgagaclgxbhzoch.supabase.co/functions/v1/ampa-api-v2/:path*"
     }
   ]
 }
