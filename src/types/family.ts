@@ -13,12 +13,16 @@ export type EducationalStage = 'infantil' | 'primaria' | 'secundaria' | 'bachill
 
 export interface Guardian {
   id: string;
+  /** Se mantiene por compatibilidad con datos existentes. */
   fullName: string;
+  firstName?: string;
+  lastName?: string;
   relationship: 'madre' | 'padre' | 'tutor_legal' | 'otro';
   dni: string;
   phone: string;
   email: string;
   isMainContact: boolean;
+  /** Formato interno DDMMAAAA; la IU lo muestra como DD/MM/AAAA. */
   birthDateDDMMAAAA?: string;
   birthDate?: string;
 }
@@ -27,7 +31,9 @@ export interface Student {
   id: string;
   firstName: string;
   lastName: string;
+  dni?: string;
   birthYear: number;
+  /** Formato interno DDMMAAAA; la IU lo muestra como DD/MM/AAAA. */
   birthDateDDMMAAAA?: string;
   birthDate?: string;
   courseOffset: number;
