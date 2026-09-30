@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FileJson, FileText, ShieldCheck, UserCog, Plus, Save, KeyRound } from 'lucide-react';
 import { AppUser, Family, SystemSettings } from '../types/family';
-import { exportToJSON } from '../services/db';
+import { exportToJSON } from '../utils/exportUtils';
 import { backendApi } from '../services/backendApi';
 import { generateFamiliesPdfReport } from '../utils/pdfExportUtils';
 
