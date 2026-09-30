@@ -7,6 +7,7 @@ export interface CalculatedCourse {
   fullDisplay: string;
   ageInAcademicYear: number;
   isGraduated: boolean;
+  birthYear: number;
 }
 
 export function getAcademicYearStart(academicYear: string): number {
@@ -15,20 +16,33 @@ export function getAcademicYearStart(academicYear: string): number {
   return new Date().getFullYear();
 }
 
+export function getStudentBirthYear(student: Pick<Student, 'birthYear' | 'birthDateDDMMAAAA'>): number {
+  const raw = String(student.birthDateDDMMAAAA || '').replace(/\D/g,'');
+  if (raw.length === 8) {
+    const year = Number(raw.slice(4,8));
+    if (year >= 1900 && year <= new Date().getFullYear()) return year;
+  }
+  return Number(student.birthYear) || new Date().getFullYear();
+}
+
 export function calculateStudentCourse(
-  student: Pick<Student, 'birthYear' | 'courseOffset' | 'groupLetter'>,
+  student: Pick<Student, 'birthYear' | 'birthDateDDMMAAAA' | 'courseOffset' | 'groupLetter'>,
   academicYear: string
 ): CalculatedCourse {
   const baseYear = getAcademicYearStart(academicYear);
+  const birthYear = getStudentBirthYear(student);
   const offset = student.courseOffset || 0;
-  const effectiveAge = baseYear - student.birthYear + offset;
+  const effectiveAge = baseYear - birthYear + offset;
   const group = student.groupLetter ? ` ${student.groupLetter.trim().toUpperCase()}` : '';
 
   const make = (stage: EducationalStage, stageName: string, courseName: string, isGraduated = false): CalculatedCourse => ({
-    stage, stageName, courseName,
+    stage,
+    stageName,
+    courseName,
     fullDisplay: isGraduated ? 'Graduado' : `${courseName.replace(/ \([^)]*\)/, '')}${group}`,
     ageInAcademicYear: effectiveAge,
     isGraduated,
+    birthYear,
   });
 
   if (effectiveAge < 3) return make('infantil', 'Infantil', 'Preescolar / Guardería');
