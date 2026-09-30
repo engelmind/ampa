@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { Family } from '../types/family';
 import { calculateStudentCourse } from './academicCourse';
 import { parseDDMMAAAA } from './dateUtils';
+import QRCode from 'qrcode';
 
 export interface PdfReportOptions {
   title?: string;
@@ -126,41 +127,116 @@ export function generateFamiliesPdfReport(
 }
 
 
-export function generateMembershipCardPdf(family: Family, academicYear: string, associationName = 'AMPA Agustinos Granada'): void {
-  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:[86,54] });
-  const main = family.guardians.find((g)=>g.isMainContact) || family.guardians[0];
-  const students = family.students.map((s)=>`${s.firstName} ${s.lastName}`).join(', ');
+export async function generateMembershipCardPdf(
+  family: Family,
+  academicYear: string,
+  associationName = 'AMPA Agustinos Granada'
+): Promise<void> {
+  const width = 85.6;
+  const height = 54;
+  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:[width,height] });
 
-  doc.setFillColor(30,41,59);
-  doc.roundedRect(0,0,86,54,3,3,'F');
-  doc.setFillColor(225,29,72);
-  doc.rect(0,0,6,54,'F');
+  const members = [
+    ...family.guardians.map((g)=>g.fullName || [g.firstName,g.lastName].filter(Boolean).join(' ')),
+    ...family.students.map((s)=>`${s.firstName} ${s.lastName}`),
+  ].map((x)=>x.trim()).filter(Boolean);
 
+  const visibleMembers = members.slice(0,5);
+  if (members.length > 5) visibleMembers[4] = `${visibleMembers[4]} · +${members.length-5}`;
+
+  const memberDigits = (family.membershipNumber.match(/\d+/)?.[0] || family.membershipNumber).slice(-4);
+  const qrTarget = `${window.location.origin}/?socio=${encodeURIComponent(family.membershipNumber)}`;
+  const qrData = await QRCode.toDataURL(qrTarget,{
+    errorCorrectionLevel:'M',
+    margin:0,
+    width:360,
+    color:{dark:'#000000',light:'#FFFFFF'},
+  });
+
+  // Tarjeta 85,6 x 54 mm, siguiendo la referencia visual aportada.
+  doc.setFillColor(246,28,35);
+  doc.roundedRect(0,0,width,height,3.6,3.6,'F');
+
+  // Formas tonales sutiles del fondo.
+  doc.setFillColor(239,35,43);
+  doc.circle(78,7,18,'F');
+  doc.setFillColor(232,27,35);
+  doc.circle(4,52,14,'F');
+
+  // Línea amarilla inferior.
+  doc.setFillColor(250,204,21);
+  doc.rect(0.8,height-1.6,width-1.6,1.1,'F');
+
+  // Isotipo.
+  doc.setFillColor(255,255,255);
+  doc.roundedRect(4,4,9.5,9.5,1.2,1.2,'F');
+  doc.setTextColor(220,27,36);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(8);
+  doc.text('AG',8.75,10.2,{align:'center'});
+
+  // Marca.
   doc.setTextColor(255,255,255);
   doc.setFont('helvetica','bold');
-  doc.setFontSize(11);
-  doc.text(associationName, 11, 12);
+  doc.setFontSize(8.4);
+  doc.text('AMPA AGUSTINOS',15.3,8.1);
+  doc.setFontSize(5.3);
+  doc.text('GRANADA',15.3,11.1);
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica','normal');
-  doc.setTextColor(203,213,225);
-  doc.text(`Curso ${academicYear}`, 11, 17);
-
+  // Curso.
+  const formattedYear = academicYear.replace('/','-');
   doc.setTextColor(255,255,255);
+  doc.setFontSize(4.5);
+  doc.text('CURSO ESCOLAR',79.8,5.9,{align:'right'});
+  doc.setTextColor(253,224,15);
+  doc.setFontSize(10.5);
+  doc.text(formattedYear,79.8,11.2,{align:'right'});
+
+  // Familia.
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(4.5);
+  doc.text('FAMILIA',4.2,18.6);
+  doc.setFontSize(family.familyName.length > 28 ? 9.2 : 11.2);
+  doc.text(`Familia ${family.familyName}`,4.2,24.6,{maxWidth:57});
+
+  // Bloque socio.
+  doc.setDrawColor(255,102,107);
+  doc.setFillColor(248,54,61);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(4.2,30.5,10.3,12.2,1.3,1.3,'FD');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(3.7);
+  doc.text('Nº SOCIO',9.35,34.3,{align:'center'});
+  doc.setFontSize(memberDigits.length > 3 ? 10.5 : 12.5);
+  doc.text(memberDigits.padStart(3,'0'),9.35,40.5,{align:'center'});
+
+  // Separador + integrantes.
+  doc.setDrawColor(255,148,152);
+  doc.setLineWidth(0.3);
+  doc.line(16.7,30.7,16.7,44.9);
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(3.8);
+  doc.text('INTEGRANTES',18.4,33.0);
   doc.setFont('helvetica','bold');
-  doc.setFontSize(12);
-  doc.text(`Familia ${family.familyName}`, 11, 27, {maxWidth:64});
+  const memberFont = visibleMembers.length >= 5 ? 5.5 : 6.2;
+  doc.setFontSize(memberFont);
+  visibleMembers.forEach((name,index)=>{
+    doc.text(name,18.4,36.2 + index * 2.85,{maxWidth:41});
+  });
 
-  doc.setFontSize(8);
-  doc.setFont('helvetica','normal');
-  doc.setTextColor(226,232,240);
-  doc.text(`Socio: ${family.membershipNumber}`, 11, 34);
-  if (main?.fullName) doc.text(`Contacto: ${main.fullName}`, 11, 39, {maxWidth:64});
-  if (students) doc.text(`Alumnos: ${students}`, 11, 44, {maxWidth:64});
+  // QR en marco blanco.
+  doc.setFillColor(255,255,255);
+  doc.roundedRect(63.8,29.7,18.3,18.3,1.2,1.2,'F');
+  doc.addImage(qrData,'PNG',64.6,30.5,16.7,16.7);
 
-  doc.setFont('helvetica','bold');
-  doc.setTextColor(family.isActiveThisYear ? 134 : 251, family.isActiveThisYear ? 239 : 191, family.isActiveThisYear ? 172 : 36);
-  doc.text(family.isActiveThisYear ? 'SOCIO ACTIVO' : 'PENDIENTE DE RENOVACIÓN', 75, 49, {align:'right'});
+  // Estado discreto.
+  if (!family.isActiveThisYear) {
+    doc.setFillColor(253,224,15);
+    doc.roundedRect(62.0,49.0,20.0,3.0,1,1,'F');
+    doc.setTextColor(126,34,34);
+    doc.setFontSize(4.3);
+    doc.text('PENDIENTE DE RENOVACIÓN',72.0,51.1,{align:'center'});
+  }
 
-  doc.save(`carnet_ampa_${family.membershipNumber}_${academicYear.replace('/','-')}.pdf`);
+  doc.save(`carnet_ampa_${family.membershipNumber}_${formattedYear}.pdf`);
 }
