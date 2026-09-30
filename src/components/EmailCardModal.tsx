@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Mail, Send, X } from 'lucide-react';
 import { Family } from '../types/family';
 import { PdfArtifact } from '../utils/pdfExportUtils';
@@ -36,6 +36,16 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
   );
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  const [mailReady,setMailReady]=useState<boolean|null>(null);
+  const [sender,setSender]=useState('');
+
+  useEffect(()=>{
+    let alive=true;
+    backendApi.emailStatus()
+      .then((status)=>{if(alive){setMailReady(status.configured);setSender(status.fromEmail || '');}})
+      .catch(()=>{if(alive)setMailReady(false);});
+    return()=>{alive=false;};
+  },[]);
 
   const send = async () => {
     if(!guardianId) return;
@@ -71,6 +81,7 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
           <button onClick={onClose} className="rounded-xl p-2 hover:bg-slate-100"><X size={19}/></button>
         </div>
         <div className="space-y-4 p-5">
+          {mailReady===false && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Correo pendiente de configurar.</strong><div className="mt-1 text-xs leading-5">El carnet puede previsualizarse y descargarse, pero el envío directo se activará cuando quede conectado el proveedor de correo del AMPA.</div></div>}
           {!recipients.length ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No hay ningún padre, madre o tutor con email registrado en esta familia.</div>
           ) : (
@@ -83,13 +94,14 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
               <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Asunto</span><input value={subject} onChange={(e)=>setSubject(e.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
               <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Mensaje</span><textarea rows={6} value={message} onChange={(e)=>setMessage(e.target.value)} className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-6"/></label>
               <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500"><Mail size={15}/><span className="truncate">{artifact.filename}</span><span className="ml-auto shrink-0">{Math.max(1,Math.round(artifact.blob.size/1024))} KB</span></div>
+              {mailReady && sender && <div className="text-[11px] text-slate-400">Remitente: {sender}</div>}
               {error&&<div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{error}</div>}
             </>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
           <button onClick={onClose} className="min-h-11 px-4 text-xs font-bold text-slate-500">Cancelar</button>
-          <button disabled={busy||!guardianId||!recipients.length} onClick={()=>void send()} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 text-xs font-bold text-white disabled:opacity-40"><Send size={15}/>{busy?'Enviando…':'Enviar carnet'}</button>
+          <button disabled={busy||!guardianId||!recipients.length||mailReady!==true} onClick={()=>void send()} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 text-xs font-bold text-white disabled:opacity-40"><Send size={15}/>{busy?'Enviando…':'Enviar carnet'}</button>
         </div>
       </div>
     </div>
