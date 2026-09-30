@@ -445,6 +445,75 @@ Deno.serve(async (req: Request) => {
       return reply({ok:true});
     }
 
+
+    if (path === '/email/family-document' && req.method === 'POST') {
+      const u = await requireRole(req,['superadmin','admin']);
+      const body = await readBody(req);
+      const resendKey = Deno.env.get('RESEND_API_KEY');
+      const mailFrom = Deno.env.get('AMPA_MAIL_FROM');
+      const senderName = Deno.env.get('AMPA_MAIL_NAME') || 'AMPA Agustinos Granada';
+      if (!resendKey || !mailFrom) return reply({error:'EMAIL_NOT_CONFIGURED'},503);
+
+      if (!body.familyId || !body.guardianId || !body.subject || !body.contentBase64 || body.documentType !== 'membership-card') {
+        return reply({error:'INVALID_EMAIL_REQUEST'},400);
+      }
+      if (String(body.subject).length > 180 || String(body.message || '').length > 8000 || String(body.contentBase64).length > 12_000_000) {
+        return reply({error:'EMAIL_PAYLOAD_TOO_LARGE'},413);
+      }
+
+      const recipients = await sql`
+        select g.id, g.email, g.first_name, g.last_name, f.family_name, f.membership_number
+        from guardians g
+        join families f on f.id=g.family_id
+        where g.id=${body.guardianId}::uuid and f.id=${body.familyId}::uuid
+        limit 1
+      `;
+      const recipient = recipients[0];
+      if (!recipient?.email) return reply({error:'GUARDIAN_EMAIL_NOT_FOUND'},404);
+
+      const escapeHtml = (value:string) => String(value || '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+      const htmlMessage = escapeHtml(String(body.message || '')).replace(/\n/g,'<br>');
+
+      const general = await sql`select value from app_settings where key='general' limit 1`;
+      const replyTo = general[0]?.value?.contactEmail || undefined;
+
+      const response = await fetch('https://api.resend.com/emails',{
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'Authorization':`Bearer ${resendKey}`,
+        },
+        body:JSON.stringify({
+          from:`${senderName} <${mailFrom}>`,
+          to:[recipient.email],
+          subject:String(body.subject),
+          html:`<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>${htmlMessage}</p><hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0"><p style="font-size:12px;color:#64748b">AMPA Agustinos Granada · Documento enviado desde la aplicación de gestión.</p></div>`,
+          ...(replyTo ? { reply_to: replyTo } : {}),
+          attachments:[{
+            filename:String(body.filename || 'carnet-ampa.pdf').replace(/[^a-zA-Z0-9._-]/g,'_'),
+            content:String(body.contentBase64),
+            content_type:String(body.mimeType || 'application/pdf'),
+          }],
+        }),
+      });
+      const result = await response.json().catch(()=>({}));
+      if (!response.ok) {
+        console.error('RESEND_ERROR',response.status,result);
+        return reply({error:'EMAIL_PROVIDER_FAILED'},502);
+      }
+
+      await log(
+        u.id,
+        'card',
+        'card',
+        `Carnet enviado por email a ${recipient.first_name} ${recipient.last_name} <${recipient.email}>`,
+        body.familyId,
+        recipient.family_name
+      );
+      return reply({ok:true,to:recipient.email,messageId:result?.id || null});
+    }
+
     return reply({error:'NOT_FOUND',path},404);
   } catch (error:any) {
     console.error(error);
