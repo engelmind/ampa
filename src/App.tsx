@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import {
   LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
   UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
-  AlertTriangle, MapPin, Phone, Mail
+  AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby
 } from 'lucide-react';
-import { AppUser, Family, MainViewTab, SystemSettings } from './types/family';
+import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import {
   getFamilies, saveFamily, toggleFamilyActive, getNextMembershipNumber,
   getSystemSettings, saveSystemSettings, exportToCSV
@@ -21,20 +21,113 @@ const emptyFamily = (membershipNumber: string): Family => ({
   familyName: '',
   isActiveThisYear: true,
   activeYears: [],
-  guardians: [{
-    id: `g-${Date.now()}`,
-    fullName: '',
-    relationship: 'madre',
-    dni: '',
-    phone: '',
-    email: '',
-    isMainContact: true,
-  }],
+  guardians: [
+    {
+      id: `g-${Date.now()}-m`,
+      fullName: '',
+      firstName: '',
+      lastName: '',
+      relationship: 'madre',
+      dni: '',
+      phone: '',
+      email: '',
+      isMainContact: true,
+      birthDateDDMMAAAA: '',
+    },
+    {
+      id: `g-${Date.now()}-p`,
+      fullName: '',
+      firstName: '',
+      lastName: '',
+      relationship: 'padre',
+      dni: '',
+      phone: '',
+      email: '',
+      isMainContact: false,
+      birthDateDDMMAAAA: '',
+    },
+  ],
   students: [],
   address: { street: '', city: 'Granada', postalCode: '' },
   notes: '',
   registrationDate: new Date().toISOString().slice(0, 10),
   updatedAt: new Date().toISOString(),
+});
+
+
+const splitFullName = (value: string) => {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') };
+};
+
+const hydrateFamilyForEditing = (family: Family): Family => ({
+  ...structuredClone(family),
+  guardians: family.guardians.map((g) => {
+    const split = splitFullName(g.fullName || '');
+    return {
+      ...g,
+      firstName: g.firstName || split.firstName,
+      lastName: g.lastName || split.lastName,
+      birthDateDDMMAAAA: g.birthDateDDMMAAAA || '',
+    };
+  }),
+  students: family.students.map((s) => ({
+    ...s,
+    dni: s.dni || '',
+    birthDateDDMMAAAA: s.birthDateDDMMAAAA || '',
+  })),
+});
+
+const normalizeDateInput = (value: string) => value.replace(/\D/g, '').slice(0, 8);
+
+const dateDisplay = (raw?: string) => {
+  const d = (raw || '').replace(/\D/g, '').slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0,2)}/${d.slice(2)}`;
+  return `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4)}`;
+};
+
+const validDate = (raw?: string) => {
+  if (!raw) return true;
+  const d = raw.replace(/\D/g, '');
+  if (d.length !== 8) return false;
+  const day = Number(d.slice(0,2)), month = Number(d.slice(2,4)), year = Number(d.slice(4,8));
+  const test = new Date(year, month - 1, day);
+  return year >= 1900 && year <= new Date().getFullYear()
+    && test.getFullYear() === year && test.getMonth() === month - 1 && test.getDate() === day;
+};
+
+const yearFromDate = (raw?: string, fallback = new Date().getFullYear() - 6) => {
+  const d = (raw || '').replace(/\D/g, '');
+  const y = Number(d.slice(4,8));
+  return d.length === 8 && y > 1900 ? y : fallback;
+};
+
+const newGuardian = (): Guardian => ({
+  id: `g-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+  fullName: '',
+  firstName: '',
+  lastName: '',
+  relationship: 'tutor_legal',
+  dni: '',
+  phone: '',
+  email: '',
+  isMainContact: false,
+  birthDateDDMMAAAA: '',
+});
+
+const newStudent = (): Student => ({
+  id: `s-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+  firstName: '',
+  lastName: '',
+  dni: '',
+  birthYear: new Date().getFullYear() - 6,
+  birthDateDDMMAAAA: '',
+  courseOffset: 0,
+  groupLetter: '',
+  allergies: '',
+  specialNeeds: '',
+  authorizedPhoto: false,
 });
 
 export default function App() {
@@ -82,17 +175,87 @@ export default function App() {
     setCurrentUser(null);
   };
 
+  const updateGuardian = (index: number, patch: Partial<Guardian>) => {
+    if (!editing) return;
+    setEditing({ ...editing, guardians: editing.guardians.map((g, i) => i === index ? { ...g, ...patch } : g) });
+  };
+
+  const addGuardian = () => editing && setEditing({ ...editing, guardians: [...editing.guardians, newGuardian()] });
+
+  const removeGuardian = (index: number) => {
+    if (!editing || editing.guardians.length <= 1) return;
+    const guardians = editing.guardians.filter((_, i) => i !== index);
+    if (!guardians.some((g) => g.isMainContact) && guardians[0]) guardians[0].isMainContact = true;
+    setEditing({ ...editing, guardians });
+  };
+
+  const setMainGuardian = (index: number) => {
+    if (!editing) return;
+    setEditing({ ...editing, guardians: editing.guardians.map((g, i) => ({ ...g, isMainContact: i === index })) });
+  };
+
+  const updateStudent = (index: number, patch: Partial<Student>) => {
+    if (!editing) return;
+    setEditing({ ...editing, students: editing.students.map((s, i) => i === index ? { ...s, ...patch } : s) });
+  };
+
+  const addStudent = () => editing && setEditing({ ...editing, students: [...editing.students, newStudent()] });
+  const removeStudent = (index: number) => editing && setEditing({ ...editing, students: editing.students.filter((_, i) => i !== index) });
+
   const saveEdited = () => {
     if (!editing || !editing.familyName.trim()) {
-      toast('error', 'Faltan datos', 'Indique al menos el nombre de la familia.');
+      toast('error', 'Faltan datos', 'Indique al menos el nombre identificativo de la familia.');
       return;
     }
-    if (!editing.activeYears.includes(settings.activeAcademicYear) && editing.isActiveThisYear) {
-      editing.activeYears = [...editing.activeYears, settings.activeAcademicYear];
+    if (editing.guardians.some((g) => !validDate(g.birthDateDDMMAAAA)) || editing.students.some((s) => !validDate(s.birthDateDDMMAAAA))) {
+      toast('error', 'Fecha no válida', 'Las fechas de nacimiento deben escribirse en formato DD/MM/AAAA.');
+      return;
     }
-    setFamilies(saveFamily(editing));
+
+    const guardians = editing.guardians
+      .filter((g) => [g.firstName, g.lastName, g.fullName].some((v) => (v || '').trim()))
+      .map((g, index) => {
+        const firstName = (g.firstName || '').trim();
+        const lastName = (g.lastName || '').trim();
+        return {
+          ...g,
+          firstName,
+          lastName,
+          fullName: [firstName, lastName].filter(Boolean).join(' ') || g.fullName.trim(),
+          birthDateDDMMAAAA: normalizeDateInput(g.birthDateDDMMAAAA || ''),
+          isMainContact: editing.guardians.some((x) => x.isMainContact) ? g.isMainContact : index === 0,
+        };
+      });
+
+    if (!guardians.length) {
+      toast('error', 'Falta un adulto responsable', 'Añada al menos padre, madre o tutor/a legal.');
+      return;
+    }
+
+    const students = editing.students
+      .filter((s) => [s.firstName, s.lastName].some((v) => v.trim()))
+      .map((s) => ({
+        ...s,
+        firstName: s.firstName.trim(),
+        lastName: s.lastName.trim(),
+        dni: (s.dni || '').trim().toUpperCase(),
+        birthDateDDMMAAAA: normalizeDateInput(s.birthDateDDMMAAAA || ''),
+        birthYear: yearFromDate(s.birthDateDDMMAAAA, s.birthYear),
+      }));
+
+    const ready: Family = {
+      ...editing,
+      guardians,
+      students,
+      activeYears: editing.isActiveThisYear && !editing.activeYears.includes(settings.activeAcademicYear)
+        ? [...editing.activeYears, settings.activeAcademicYear]
+        : editing.activeYears,
+    };
+
+    const updated = saveFamily(ready);
+    setFamilies(updated);
     setEditing(null);
-    toast('success', 'Ficha guardada', `Familia ${editing.familyName} actualizada.`);
+    toast('success', 'Ficha familiar guardada', `${guardians.length} adulto(s) y ${students.length} hijo(s)/a(s) registrados.`);
   };
 
   const toggleActive = (id: string) => {
@@ -296,7 +459,7 @@ export default function App() {
               <section className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600"><span className="flex items-center gap-1 font-bold text-slate-700"><MapPin size={13}/>{selected.address.street || 'Sin dirección'}</span><span>{selected.address.city} {selected.address.postalCode}</span></section>
 
               <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                {canEdit && <button type="button" onClick={() => { setEditing(structuredClone(selected)); setSelected(null); }} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar</button>}
+                {canEdit && <button type="button" onClick={() => { setEditing(hydrateFamilyForEditing(selected)); setSelected(null); }} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar</button>}
                 {canEdit && <button type="button" onClick={() => toggleActive(selected.id)} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{selected.isActiveThisYear ? 'Marcar no renovada' : 'Registrar renovación'}</button>}
               </div>
             </div>
@@ -306,22 +469,94 @@ export default function App() {
 
       {editing && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4">
-          <div className="max-h-[94vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white p-5">
-              <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{editing.membershipNumber}</div><h2 className="text-lg font-black">{families.some((f)=>f.id===editing.id) ? 'Editar familia' : 'Nueva familia'}</h2></div>
+          <div className="max-h-[96vh] w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 p-5 backdrop-blur">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{editing.membershipNumber}</div>
+                <h2 className="text-lg font-black">{families.some((f)=>f.id===editing.id) ? 'Editar familia completa' : 'Nueva familia'}</h2>
+              </div>
               <button type="button" onClick={() => setEditing(null)} className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
             </div>
-            <div className="space-y-4 p-5">
-              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Nombre de familia</span><input value={editing.familyName} onChange={(e)=>setEditing({...editing,familyName:e.target.value})} placeholder="Ej. García López" className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Tutor principal</span><input value={editing.guardians[0]?.fullName || ''} onChange={(e)=>setEditing({...editing,guardians:[{...(editing.guardians[0] || {id:`g-${Date.now()}`,relationship:'madre',dni:'',phone:'',email:'',isMainContact:true}),fullName:e.target.value},...editing.guardians.slice(1)]})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-                <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Teléfono</span><input value={editing.guardians[0]?.phone || ''} onChange={(e)=>setEditing({...editing,guardians:[{...(editing.guardians[0] || {id:`g-${Date.now()}`,fullName:'',relationship:'madre',dni:'',email:'',isMainContact:true}),phone:e.target.value},...editing.guardians.slice(1)]})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+
+            <div className="space-y-7 p-5 sm:p-6">
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <h3 className="mb-4 text-sm font-black">Datos generales</h3>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Nombre de la familia</span><input value={editing.familyName} onChange={(e)=>setEditing({...editing,familyName:e.target.value})} placeholder="Ej. García López" className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                  <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Nº de socio</span><input value={editing.membershipNumber} onChange={(e)=>setEditing({...editing,membershipNumber:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-mono"/></label>
+                  <label className="flex min-h-10 items-center gap-2 self-end rounded-xl border border-slate-200 px-3"><input type="checkbox" checked={editing.isActiveThisYear} onChange={(e)=>setEditing({...editing,isActiveThisYear:e.target.checked})}/><span className="text-xs font-bold">Activa {settings.activeAcademicYear}</span></label>
+                </div>
+              </section>
+
+              <section>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div><h3 className="text-sm font-black">Padre, madre y tutores</h3><p className="text-xs text-slate-500">Registre todos los adultos responsables de la unidad familiar.</p></div>
+                  <button type="button" onClick={addGuardian} className="flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold"><UserPlus size={16}/> Añadir adulto</button>
+                </div>
+                <div className="space-y-3">
+                  {editing.guardians.map((g, index) => (
+                    <div key={g.id} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <select value={g.relationship} onChange={(e)=>updateGuardian(index,{relationship:e.target.value as Guardian['relationship']})} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
+                            <option value="madre">Madre</option><option value="padre">Padre</option><option value="tutor_legal">Tutor/a legal</option><option value="otro">Otro/a</option>
+                          </select>
+                          <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="radio" name="mainGuardian" checked={g.isMainContact} onChange={()=>setMainGuardian(index)}/> Contacto principal</label>
+                        </div>
+                        {editing.guardians.length > 1 && <button type="button" onClick={()=>removeGuardian(index)} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label="Eliminar adulto"><Trash2 size={16}/></button>}
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Nombre</span><input value={g.firstName || ''} onChange={(e)=>updateGuardian(index,{firstName:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Apellidos</span><input value={g.lastName || ''} onChange={(e)=>updateGuardian(index,{lastName:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">DNI / NIE</span><input value={g.dni} onChange={(e)=>updateGuardian(index,{dni:e.target.value.toUpperCase()})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-mono"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha de nacimiento</span><input inputMode="numeric" placeholder="DD/MM/AAAA" value={dateDisplay(g.birthDateDDMMAAAA)} onChange={(e)=>updateGuardian(index,{birthDateDDMMAAAA:normalizeDateInput(e.target.value)})} className={`min-h-10 w-full rounded-xl border bg-white px-3 text-sm font-mono ${validDate(g.birthDateDDMMAAAA) ? 'border-slate-200' : 'border-rose-400'}`}/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Teléfono</span><input value={g.phone} onChange={(e)=>updateGuardian(index,{phone:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Correo electrónico</span><input type="email" value={g.email} onChange={(e)=>updateGuardian(index,{email:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div><h3 className="text-sm font-black">Hijos/as · alumnos/as</h3><p className="text-xs text-slate-500">Puede añadir tantos hijos/as como formen parte de la familia.</p></div>
+                  <button type="button" onClick={addStudent} className="flex min-h-10 items-center gap-2 rounded-xl bg-rose-600 px-3 text-xs font-bold text-white"><Baby size={16}/> Añadir hijo/a</button>
+                </div>
+                <div className="space-y-3">
+                  {editing.students.map((s, index) => (
+                    <div key={s.id} className="rounded-2xl border border-slate-200 p-4">
+                      <div className="mb-4 flex items-center justify-between"><div className="text-xs font-black uppercase tracking-wider text-slate-400">Alumno/a {index + 1}</div><button type="button" onClick={()=>removeStudent(index)} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Trash2 size={16}/></button></div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Nombre</span><input value={s.firstName} onChange={(e)=>updateStudent(index,{firstName:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Apellidos</span><input value={s.lastName} onChange={(e)=>updateStudent(index,{lastName:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">DNI / NIE</span><input value={s.dni || ''} onChange={(e)=>updateStudent(index,{dni:e.target.value.toUpperCase()})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-mono"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha de nacimiento</span><input inputMode="numeric" placeholder="DD/MM/AAAA" value={dateDisplay(s.birthDateDDMMAAAA)} onChange={(e)=>{const raw=normalizeDateInput(e.target.value);updateStudent(index,{birthDateDDMMAAAA:raw,birthYear:yearFromDate(raw,s.birthYear)});}} className={`min-h-10 w-full rounded-xl border px-3 text-sm font-mono ${validDate(s.birthDateDDMMAAAA) ? 'border-slate-200' : 'border-rose-400'}`}/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Grupo / letra</span><input value={s.groupLetter} onChange={(e)=>updateStudent(index,{groupLetter:e.target.value.toUpperCase().slice(0,2)})} placeholder="A" className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso</span><select value={s.courseOffset} onChange={(e)=>updateStudent(index,{courseOffset:Number(e.target.value)})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"><option value={-1}>-1 respecto al automático</option><option value={0}>Automático por edad</option><option value={1}>+1 respecto al automático</option></select></label>
+                        <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Alergias / intolerancias</span><input value={s.allergies || ''} onChange={(e)=>updateStudent(index,{allergies:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Necesidades especiales</span><input value={s.specialNeeds || ''} onChange={(e)=>updateStudent(index,{specialNeeds:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                      </div>
+                    </div>
+                  ))}
+                  {editing.students.length === 0 && <button type="button" onClick={addStudent} className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 p-6 text-sm font-bold text-slate-400 hover:border-rose-300 hover:text-rose-600"><Plus size={18}/> Añadir el primer hijo/a</button>}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <h3 className="mb-4 text-sm font-black">Domicilio y observaciones</h3>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Dirección</span><input value={editing.address.street} onChange={(e)=>setEditing({...editing,address:{...editing.address,street:e.target.value}})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                  <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Código postal</span><input value={editing.address.postalCode} onChange={(e)=>setEditing({...editing,address:{...editing.address,postalCode:e.target.value}})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                  <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Localidad</span><input value={editing.address.city} onChange={(e)=>setEditing({...editing,address:{...editing.address,city:e.target.value}})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                  <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Observaciones</span><textarea value={editing.notes || ''} onChange={(e)=>setEditing({...editing,notes:e.target.value})} rows={3} className="w-full rounded-xl border border-slate-200 p-3 text-sm"/></label>
+                </div>
+              </section>
+
+              <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t border-slate-200 bg-white/95 p-4 backdrop-blur sm:-mx-6 sm:-mb-6">
+                <button type="button" onClick={()=>setEditing(null)} className="min-h-11 rounded-xl px-4 text-xs font-bold text-slate-500">Cancelar</button>
+                <button type="button" onClick={saveEdited} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 text-xs font-bold text-white"><Save size={15}/> Guardar familia completa</button>
               </div>
-              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Correo</span><input type="email" value={editing.guardians[0]?.email || ''} onChange={(e)=>setEditing({...editing,guardians:[{...(editing.guardians[0] || {id:`g-${Date.now()}`,fullName:'',relationship:'madre',dni:'',phone:'',isMainContact:true}),email:e.target.value},...editing.guardians.slice(1)]})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Dirección</span><input value={editing.address.street} onChange={(e)=>setEditing({...editing,address:{...editing.address,street:e.target.value}})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Observaciones</span><textarea value={editing.notes || ''} onChange={(e)=>setEditing({...editing,notes:e.target.value})} rows={3} className="w-full rounded-xl border border-slate-200 p-3 text-sm"/></label>
-              <label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={editing.isActiveThisYear} onChange={(e)=>setEditing({...editing,isActiveThisYear:e.target.checked})}/><span className="text-xs font-bold">Activa en {settings.activeAcademicYear}</span></label>
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={()=>setEditing(null)} className="min-h-11 rounded-xl px-4 text-xs font-bold text-slate-500">Cancelar</button><button type="button" onClick={saveEdited} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 text-xs font-bold text-white"><Save size={15}/> Guardar ficha</button></div>
             </div>
           </div>
         </div>
