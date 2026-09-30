@@ -116,3 +116,20 @@ values (
   '{"activeAcademicYear":"2026/2027","schoolName":"Colegio San Agustín Granada","associationName":"AMPA Agustinos Granada","nifCif":"","contactEmail":""}'::jsonb
 )
 on conflict (key) do nothing;
+
+
+-- Copias lógicas privadas
+create schema if not exists ampa_private;
+
+create table if not exists ampa_private.backup_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  created_by uuid references public.app_users(id) on delete set null,
+  reason text not null default 'manual',
+  payload jsonb not null
+);
+create index if not exists backup_snapshots_created_at_idx on ampa_private.backup_snapshots(created_at desc);
+create index if not exists backup_snapshots_created_by_idx on ampa_private.backup_snapshots(created_by);
+
+revoke all on schema ampa_private from public, anon, authenticated;
+revoke all on all tables in schema ampa_private from public, anon, authenticated;
