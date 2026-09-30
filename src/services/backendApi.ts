@@ -56,4 +56,14 @@ export const backendApi = {
     request<{ user: AppUser }>('/api/users', { method: 'POST', body: JSON.stringify(user) }),
   updateUser: (id: string, patch: Partial<Pick<AppUser, 'name' | 'email' | 'role' | 'isActive' | 'password'>>) =>
     request<{ user: AppUser }>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+
+  importFamilies: (families: Family[], mode: 'merge' | 'replace' = 'merge') =>
+    request<{ ok: boolean; imported: number }>('/api/imports', { method: 'POST', body: JSON.stringify({ families, mode }) }),
+
+  listBackups: () =>
+    request<{ backups: Array<{ id:string; createdAt:string; reason:string; createdByName?:string|null }> }>('/api/backups'),
+  createBackup: (reason = 'manual') =>
+    request<{ id:string }>('/api/backups', { method:'POST', body:JSON.stringify({ reason }) }),
+  restoreBackup: (id:string, confirmation:string) =>
+    request<{ ok:boolean }>('/api/backups/restore', { method:'POST', body:JSON.stringify({ id, confirmation }) }),
 };
