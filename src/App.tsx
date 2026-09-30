@@ -8,6 +8,7 @@ import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from 
 import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
 import { calculateStudentCourse } from './utils/academicCourse';
+import { familyMatchesStage, getAvailableAcademicYears, getFamilyDataIssues } from './utils/dataQuality';
 import { LoginScreen } from './components/LoginScreen';
 import { SetupScreen } from './components/SetupScreen';
 import { AmpaLogo } from './components/AmpaLogo';
@@ -155,6 +156,11 @@ export default function App() {
   const [tab, setTab] = useState<MainViewTab>('dashboard');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [academicYearFilter, setAcademicYearFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState('all');
+  const [qualityFilter, setQualityFilter] = useState<'all'|'incomplete'>('all');
+  const [sortBy, setSortBy] = useState<'familyName'|'membershipNumber'|'registrationDate'|'studentsCount'>('familyName');
+  const [sortOrder, setSortOrder] = useState<'asc'|'desc'>('asc');
   const [selected, setSelected] = useState<Family | null>(null);
   const [editing, setEditing] = useState<Family | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -212,22 +218,35 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  const academicYears = useMemo(() => getAvailableAcademicYears(families,settings),[families,settings]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return families.filter((f) => {
+    const result = families.filter((f) => {
       const guardians = f.guardians.map((g) => [g.fullName, g.dni, g.phone, g.email].filter(Boolean).join(' ')).join(' ');
       const students = f.students.map((s) => [s.firstName, s.lastName, s.dni].filter(Boolean).join(' ')).join(' ');
-      const searchable = [f.membershipNumber, f.familyName, guardians, students]
-        .filter(Boolean).join(' ').toLowerCase();
+      const searchable = [f.membershipNumber, f.familyName, guardians, students].filter(Boolean).join(' ').toLowerCase();
       const matchesQ = !q || searchable.includes(q);
       const matchesStatus = status === 'all' || (status === 'active' ? f.isActiveThisYear : !f.isActiveThisYear);
-      return matchesQ && matchesStatus;
+      const matchesYear = academicYearFilter === 'all' || f.activeYears.includes(academicYearFilter) || f.registrationAcademicYear === academicYearFilter;
+      const matchesStage = familyMatchesStage(f,settings.activeAcademicYear,stageFilter);
+      const matchesQuality = qualityFilter === 'all' || getFamilyDataIssues(f).length > 0;
+      return matchesQ && matchesStatus && matchesYear && matchesStage && matchesQuality;
     });
-  }, [families, query, status]);
+
+    return result.sort((a,b) => {
+      let av:any, bv:any;
+      if (sortBy==='studentsCount') { av=a.students.length; bv=b.students.length; }
+      else { av=(a as any)[sortBy] || ''; bv=(b as any)[sortBy] || ''; }
+      const cmp = typeof av === 'number' ? av-bv : String(av).localeCompare(String(bv),'es',{numeric:true,sensitivity:'base'});
+      return sortOrder==='asc'?cmp:-cmp;
+    });
+  }, [families, query, status, academicYearFilter, stageFilter, qualityFilter, sortBy, sortOrder, settings.activeAcademicYear]);
 
   const activeCount = families.filter((f) => f.isActiveThisYear).length;
   const studentCount = families.reduce((n, f) => n + f.students.length, 0);
   const pendingCount = families.length - activeCount;
+  const incompleteFamilies = families.filter((f)=>getFamilyDataIssues(f).length>0);
 
   if (bootState === 'loading') {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-center text-white"><AmpaLogo inverted className="mx-auto h-16 w-auto"/><p className="mt-5 text-sm text-slate-300">Conectando con la base de datos…</p></div></div>;
@@ -403,7 +422,7 @@ export default function App() {
           <div className="hidden h-8 w-px bg-slate-200 sm:block" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-extrabold">Gestión de Familias</div>
-            <div className="text-[11px] text-slate-500">Curso {settings.activeAcademicYear} · entorno de demostración</div>
+            <div className="text-[11px] text-slate-500">Curso {settings.activeAcademicYear} · base de datos central</div>
           </div>
           <div className="hidden text-right md:block">
             <div className="text-xs font-bold">{currentUser.name}</div>
@@ -429,10 +448,6 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div className="mt-4 hidden rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-900 lg:block">
-            <div className="mb-1 flex items-center gap-2 font-bold"><AlertTriangle size={14}/> Prototipo online</div>
-            Utilice únicamente datos ficticios hasta activar backend, base de datos y autenticación segura.
-          </div>
         </aside>
 
         <main className="min-w-0">
@@ -483,6 +498,21 @@ export default function App() {
 
               <section className="rounded-2xl border border-slate-200 bg-white">
                 <div className="flex items-center justify-between border-b border-slate-100 p-4">
+                  <div><h2 className="text-sm font-extrabold">Fichas que requieren revisión</h2><p className="text-xs text-slate-500">Datos de contacto, domicilio, nacimiento o consentimientos incompletos.</p></div>
+                  <button type="button" onClick={() => { setQualityFilter('incomplete'); setTab('families'); }} className="text-xs font-bold text-rose-600">{incompleteFamilies.length} pendientes</button>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {incompleteFamilies.slice(0,5).map((f)=><button key={f.id} type="button" onClick={()=>setSelected(f)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-slate-50">
+                    <AlertTriangle size={16} className="text-amber-500"/>
+                    <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">Familia {f.familyName}</div><div className="text-[11px] text-slate-400">{getFamilyDataIssues(f).slice(0,2).map((i)=>i.label).join(' · ')}</div></div>
+                    <ChevronRight size={17} className="text-slate-300"/>
+                  </button>)}
+                  {!incompleteFamilies.length&&<div className="p-8 text-center text-sm text-slate-400">No hay fichas con datos pendientes.</div>}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-100 p-4">
                   <div><h2 className="text-sm font-extrabold">Pendientes de renovación</h2><p className="text-xs text-slate-500">Familias no activas en {settings.activeAcademicYear}</p></div>
                   <button type="button" onClick={() => { setStatus('inactive'); setTab('families'); }} className="text-xs font-bold text-rose-600">Ver todas</button>
                 </div>
@@ -510,15 +540,17 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_auto]">
-                <label className="relative">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
+                <label className="relative block">
                   <Search size={17} className="absolute left-3 top-3.5 text-slate-400"/>
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar familia, alumno, teléfono, email o nº de socio…" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:border-rose-400 focus:bg-white"/>
                 </label>
-                <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-                  {([['all','Todas'],['active','Activas'],['inactive','Pendientes']] as const).map(([id,label]) => (
-                    <button key={id} type="button" onClick={() => setStatus(id)} className={`min-h-9 rounded-lg px-3 text-xs font-bold ${status === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{label}</button>
-                  ))}
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <select value={status} onChange={(e)=>setStatus(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los estados</option><option value="active">Activas</option><option value="inactive">Pendientes</option></select>
+                  <select value={academicYearFilter} onChange={(e)=>setAcademicYearFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los cursos</option>{academicYears.map((y)=><option key={y} value={y}>{y}</option>)}</select>
+                  <select value={stageFilter} onChange={(e)=>setStageFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todas las etapas</option><option value="infantil">Infantil</option><option value="primaria">Primaria</option><option value="secundaria">Secundaria</option><option value="bachillerato">Bachillerato</option><option value="graduado">Graduado</option></select>
+                  <select value={qualityFilter} onChange={(e)=>setQualityFilter(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todas las fichas</option><option value="incomplete">Datos incompletos</option></select>
+                  <div className="flex gap-2"><select value={sortBy} onChange={(e)=>setSortBy(e.target.value as any)} className="min-h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-2 text-xs font-bold"><option value="familyName">Orden: Familia</option><option value="membershipNumber">Orden: Socio</option><option value="registrationDate">Orden: Alta</option><option value="studentsCount">Orden: Nº alumnos</option></select><button type="button" onClick={()=>setSortOrder(v=>v==='asc'?'desc':'asc')} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-black">{sortOrder==='asc'?'↑':'↓'}</button></div>
                 </div>
               </div>
 
@@ -553,7 +585,7 @@ export default function App() {
             <div className="space-y-5">
               <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Configuración</p><h1 className="text-2xl font-black">Ajustes del AMPA</h1></div>
               <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-slate-100 p-2"><Settings size={18}/></div><div><h2 className="text-sm font-extrabold">Datos generales</h2><p className="text-xs text-slate-500">Configuración local de esta instalación.</p></div></div>
+                <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-slate-100 p-2"><Settings size={18}/></div><div><h2 className="text-sm font-extrabold">Datos generales</h2><p className="text-xs text-slate-500">Configuración central de la aplicación.</p></div></div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {[
                     ['associationName','Asociación'],
@@ -565,10 +597,6 @@ export default function App() {
                   ))}
                 </div>
                 {canEdit && <button type="button" onClick={() => updateSettings(settings)} className="mt-5 flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><Save size={16}/> Guardar ajustes</button>}
-              </section>
-              <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-                <div className="mb-2 flex items-center gap-2 font-extrabold"><AlertTriangle size={18}/> Pendiente antes de producción</div>
-                <p className="text-xs leading-6">Esta primera versión online conserva almacenamiento en el navegador. No introduzca datos personales reales. La siguiente fase sustituirá esta capa por autenticación de servidor, base de datos central, permisos y registro de actividad.</p>
               </section>
               <AdminTools
                 families={families}
@@ -640,6 +668,10 @@ export default function App() {
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Teléfono</span><input value={g.phone} onChange={(e)=>updateGuardian(index,{phone:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Correo electrónico</span><input type="email" value={g.email} onChange={(e)=>updateGuardian(index,{email:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
                       </div>
+                      <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-2">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={g.communicationsConsent===true} onChange={(e)=>updateGuardian(index,{communicationsConsent:e.target.checked})}/> Autoriza comunicaciones del AMPA</label>
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={g.privacyConsent===true} onChange={(e)=>updateGuardian(index,{privacyConsent:e.target.checked})}/> Consentimiento de privacidad registrado</label>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -663,6 +695,7 @@ export default function App() {
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso</span><select value={s.courseOffset} onChange={(e)=>updateStudent(index,{courseOffset:Number(e.target.value)})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"><option value={-1}>-1 respecto al automático</option><option value={0}>Automático por edad</option><option value={1}>+1 respecto al automático</option></select></label>
                         <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Alergias / intolerancias</span><input value={s.allergies || ''} onChange={(e)=>updateStudent(index,{allergies:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Necesidades especiales</span><input value={s.specialNeeds || ''} onChange={(e)=>updateStudent(index,{specialNeeds:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                        <label className="flex min-h-10 items-center gap-2 rounded-xl bg-slate-50 px-3 text-xs font-semibold text-slate-600"><input type="checkbox" checked={s.authorizedPhoto} onChange={(e)=>updateStudent(index,{authorizedPhoto:e.target.checked})}/> Autorización de imagen registrada</label>
                       </div>
                     </div>
                   ))}
