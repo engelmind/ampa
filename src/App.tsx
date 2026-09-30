@@ -1,23 +1,37 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
   UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
   AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby
 } from 'lucide-react';
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
-import {
-  getFamilies, saveFamily, toggleFamilyActive, getNextMembershipNumber,
-  getSystemSettings, saveSystemSettings, exportToCSV, advanceAcademicYear
-} from './services/db';
-import { getCurrentUser, logout } from './services/authService';
-import { addActivity, getActivityLog } from './services/auditService';
+import { exportToCSV } from './services/db';
+import { backendApi } from './services/backendApi';
 import { calculateStudentCourse } from './utils/academicCourse';
 import { LoginScreen } from './components/LoginScreen';
+import { SetupScreen } from './components/SetupScreen';
 import { AmpaLogo } from './components/AmpaLogo';
 import { NotificationToast, ToastMessage } from './components/NotificationToast';
 import { FamilyDetail } from './components/FamilyDetail';
 import { CoursesView } from './components/CoursesView';
 import { AdminTools } from './components/AdminTools';
+
+const defaultSettings: SystemSettings = {
+  activeAcademicYear: '2026/2027',
+  schoolName: 'Colegio San Agustín Granada',
+  associationName: 'AMPA Agustinos Granada',
+  nifCif: '',
+  contactEmail: '',
+};
+
+const nextMembershipNumber = (families: Family[]) => {
+  let max = 0;
+  for (const family of families) {
+    const match = family.membershipNumber.match(/\d+/);
+    if (match) max = Math.max(max, Number(match[0]));
+  }
+  return `SOC-${String(max + 1).padStart(4, '0')}`;
+};
 
 const emptyFamily = (membershipNumber: string): Family => ({
   id: `fam-${Date.now()}`,
@@ -135,16 +149,17 @@ const newStudent = (): Student => ({
 });
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(getCurrentUser());
-  const [families, setFamilies] = useState<Family[]>(getFamilies());
-  const [settings, setSettings] = useState<SystemSettings>(getSystemSettings());
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
   const [tab, setTab] = useState<MainViewTab>('dashboard');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
   const [selected, setSelected] = useState<Family | null>(null);
   const [editing, setEditing] = useState<Family | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [activity, setActivity] = useState(getActivityLog());
+  const [activity, setActivity] = useState<any[]>([]);
+  const [bootState, setBootState] = useState<'loading' | 'setup' | 'login' | 'ready' | 'error'>('loading');
 
   const canEdit = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
@@ -154,16 +169,48 @@ export default function App() {
     window.setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 3500);
   };
 
-  const logActivity = (
-    summary: string,
-    action: 'create' | 'update' | 'delete' | 'renew' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card',
-    entityType: 'family' | 'user' | 'settings' | 'course' | 'export' | 'import' | 'card' = 'family',
-    entityId?: string,
-    entityLabel?: string
-  ) => {
-    if (!currentUser) return;
-    setActivity(addActivity(currentUser, { summary, action, entityType, entityId, entityLabel }));
+  const loadWorkspace = async () => {
+    const [familiesResult, settingsResult, activityResult] = await Promise.all([
+      backendApi.getFamilies(),
+      backendApi.getSettings(),
+      backendApi.getActivity(),
+    ]);
+    setFamilies(familiesResult.families);
+    setSettings({ ...defaultSettings, ...settingsResult.settings });
+    setActivity(activityResult.activity);
   };
+
+  const acceptAuthenticatedUser = async (user: AppUser) => {
+    setCurrentUser(user);
+    await loadWorkspace();
+    setBootState('ready');
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const health = await backendApi.health();
+        if (cancelled) return;
+        if ((health.users || 0) === 0) {
+          setBootState('setup');
+          return;
+        }
+        try {
+          const session = await backendApi.me();
+          if (cancelled) return;
+          setCurrentUser(session.user);
+          await loadWorkspace();
+          if (!cancelled) setBootState('ready');
+        } catch (error: any) {
+          if (!cancelled) setBootState(error?.status === 401 ? 'login' : 'error');
+        }
+      } catch {
+        if (!cancelled) setBootState('error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -182,13 +229,31 @@ export default function App() {
   const studentCount = families.reduce((n, f) => n + f.students.length, 0);
   const pendingCount = families.length - activeCount;
 
-  if (!currentUser) {
-    return <LoginScreen onLoginSuccess={(u) => { setCurrentUser(u); toast('success', 'Sesión iniciada', `Bienvenido/a, ${u.name}`); }} />;
+  if (bootState === 'loading') {
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-center text-white"><AmpaLogo inverted className="mx-auto h-16 w-auto"/><p className="mt-5 text-sm text-slate-300">Conectando con la base de datos…</p></div></div>;
+  }
+  if (bootState === 'error') {
+    return <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6"><div className="max-w-md rounded-3xl bg-white p-7 text-center"><AlertTriangle className="mx-auto text-rose-600"/><h1 className="mt-3 text-lg font-black">No se puede conectar con el backend</h1><p className="mt-2 text-sm text-slate-500">La interfaz está disponible, pero la API de producción no responde correctamente.</p><button onClick={()=>window.location.reload()} className="mt-5 min-h-11 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white">Reintentar</button></div></div>;
+  }
+  if (bootState === 'setup') {
+    return <SetupScreen
+      onBootstrap={async (payload) => (await backendApi.bootstrap(payload)).user}
+      onReady={(user) => { void acceptAuthenticatedUser(user); }}
+    />;
+  }
+  if (bootState === 'login' || !currentUser) {
+    return <LoginScreen
+      onAuthenticate={async (username, password) => (await backendApi.login(username, password)).user}
+      onLoginSuccess={(user) => { void acceptAuthenticatedUser(user); toast('success', 'Sesión iniciada', `Bienvenido/a, ${user.name}`); }}
+    />;
   }
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    try { await backendApi.logout(); } catch {}
     setCurrentUser(null);
+    setFamilies([]);
+    setActivity([]);
+    setBootState('login');
   };
 
   const updateGuardian = (index: number, patch: Partial<Guardian>) => {
@@ -218,7 +283,7 @@ export default function App() {
   const addStudent = () => editing && setEditing({ ...editing, students: [...editing.students, newStudent()] });
   const removeStudent = (index: number) => editing && setEditing({ ...editing, students: editing.students.filter((_, i) => i !== index) });
 
-  const saveEdited = () => {
+  const saveEdited = async () => {
     if (!editing || !editing.familyName.trim()) {
       toast('error', 'Faltan datos', 'Indique al menos el nombre identificativo de la familia.');
       return;
@@ -234,9 +299,7 @@ export default function App() {
         const firstName = (g.firstName || '').trim();
         const lastName = (g.lastName || '').trim();
         return {
-          ...g,
-          firstName,
-          lastName,
+          ...g, firstName, lastName,
           fullName: [firstName, lastName].filter(Boolean).join(' ') || g.fullName.trim(),
           birthDateDDMMAAAA: normalizeDateInput(g.birthDateDDMMAAAA || ''),
           isMainContact: editing.guardians.some((x) => x.isMainContact) ? g.isMainContact : index === 0,
@@ -263,39 +326,37 @@ export default function App() {
       ...editing,
       guardians,
       students,
+      registrationAcademicYear: editing.registrationAcademicYear || settings.activeAcademicYear,
       activeYears: editing.isActiveThisYear && !editing.activeYears.includes(settings.activeAcademicYear)
         ? [...editing.activeYears, settings.activeAcademicYear]
         : editing.activeYears,
     };
 
     const existed = families.some((f) => f.id === ready.id);
-    const updated = saveFamily(ready);
-    setFamilies(updated);
-    setEditing(null);
-    logActivity(
-      `${existed ? 'Ficha modificada' : 'Familia dada de alta'}: ${ready.familyName}`,
-      existed ? 'update' : 'create',
-      'family',
-      ready.id,
-      ready.familyName
-    );
-    toast('success', 'Ficha familiar guardada', `${guardians.length} adulto(s) y ${students.length} hijo(s)/a(s) registrados.`);
+    try {
+      if (existed) await backendApi.updateFamily(ready);
+      else await backendApi.createFamily(ready);
+      await loadWorkspace();
+      setEditing(null);
+      setSelected(null);
+      toast('success', 'Ficha familiar guardada', `${guardians.length} adulto(s) y ${students.length} hijo(s)/a(s) registrados.`);
+    } catch (error: any) {
+      toast('error', 'No se pudo guardar la familia', error?.message);
+    }
   };
 
-  const toggleActive = (id: string) => {
-    const updated = toggleFamilyActive(id, settings.activeAcademicYear);
-    setFamilies(updated);
-    const fam = updated.find((f) => f.id === id);
-    if (fam) {
-      setSelected(fam);
-      logActivity(
-        fam.isActiveThisYear ? `Renovación registrada para ${fam.familyName}` : `Renovación retirada para ${fam.familyName}`,
-        fam.isActiveThisYear ? 'renew' : 'deactivate',
-        'family',
-        fam.id,
-        fam.familyName
-      );
-      toast('info', fam.isActiveThisYear ? 'Renovación registrada' : 'Familia marcada como no renovada');
+  const toggleActive = async (id: string) => {
+    const fam = families.find((f) => f.id === id);
+    if (!fam) return;
+    const nextActive = !fam.isActiveThisYear;
+    try {
+      await backendApi.renewFamily(id, settings.activeAcademicYear, nextActive ? 'renewed' : 'inactive');
+      await loadWorkspace();
+      const refreshed = (await backendApi.getFamilies()).families.find((f) => f.id === id);
+      setSelected(refreshed || null);
+      toast('info', nextActive ? 'Renovación registrada' : 'Familia marcada como no renovada');
+    } catch (error:any) {
+      toast('error', 'No se pudo actualizar la renovación', error?.message);
     }
   };
 
@@ -308,23 +369,30 @@ export default function App() {
     a.download = `ampa_familias_${settings.activeAcademicYear.replace('/', '-')}.csv`;
     a.click();
     URL.revokeObjectURL(href);
-    logActivity(`Listado CSV exportado: ${filtered.length} familias`, 'export', 'export');
     toast('success', 'Listado exportado', `${filtered.length} familias incluidas.`);
   };
 
-  const updateSettings = (next: SystemSettings) => {
-    setSettings(saveSystemSettings(next));
-    logActivity(`Ajustes actualizados. Curso activo: ${next.activeAcademicYear}`, 'settings', 'settings');
-    toast('success', 'Ajustes guardados');
+  const updateSettings = async (next: SystemSettings) => {
+    try {
+      const result = await backendApi.saveSettings(next);
+      setSettings({ ...defaultSettings, ...result.settings });
+      await loadWorkspace();
+      toast('success', 'Ajustes guardados');
+    } catch (error:any) {
+      toast('error', 'No se pudieron guardar los ajustes', error?.message);
+    }
   };
 
-  const handleAdvanceYear = (newYear: string) => {
+  const handleAdvanceYear = async (newYear: string) => {
     if (!currentUser || !window.confirm(`Abrir el curso ${newYear}? Las familias quedarán pendientes de renovación y se conservará el histórico.`)) return;
-    const result = advanceAcademicYear(newYear, false);
-    setSettings(result.settings);
-    setFamilies(result.families);
-    logActivity(`Curso académico abierto: ${newYear}`, 'settings', 'course');
-    toast('success', 'Nuevo curso abierto', `Curso ${newYear} preparado para renovaciones.`);
+    try {
+      await backendApi.saveSettings({ ...settings, activeAcademicYear: newYear });
+      await Promise.all(families.map((family) => backendApi.renewFamily(family.id, newYear, 'pending')));
+      await loadWorkspace();
+      toast('success', 'Nuevo curso abierto', `Curso ${newYear} preparado para renovaciones.`);
+    } catch (error:any) {
+      toast('error', 'No se pudo abrir el nuevo curso', error?.message);
+    }
   };
 
   return (
@@ -376,7 +444,7 @@ export default function App() {
                   <h1 className="mt-2 text-2xl font-black">AMPA Agustinos Granada</h1>
                   <p className="mt-1 max-w-2xl text-sm text-slate-300">Consulta el estado del censo, controla renovaciones y accede rápidamente a las tareas habituales.</p>
                 </div>
-                {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(getNextMembershipNumber()))} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold hover:bg-rose-500"><Plus size={18}/> Nueva familia</button>}
+                {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold hover:bg-rose-500"><Plus size={18}/> Nueva familia</button>}
               </section>
 
               <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -438,7 +506,7 @@ export default function App() {
                 <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Directorio</p><h1 className="text-2xl font-black">Familias asociadas</h1></div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={downloadCSV} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> Exportar CSV</button>
-                  {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(getNextMembershipNumber()))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
+                  {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
                 </div>
               </div>
 
