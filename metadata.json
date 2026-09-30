@@ -1,6 +1,6 @@
 {
   "name": "AMPA Agustinos Granada - Gestión de Familias",
-  "description": "Plataforma de gestión de familias de la AMPA Agustinos Granada: censo de socios, cálculo automático de cursos por año de nacimiento, roles de acceso y carnets digitales.",
+  "description": "Aplicación privada para la gestión centralizada de familias, alumnos, cursos, renovaciones, usuarios, consentimientos, importación/exportación y documentos del AMPA Agustinos Granada.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }
