@@ -255,6 +255,27 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
   await log(userId,'settings','import','Copia de seguridad restaurada',snapshotId,'backup');
 }
 
+async function getEmailProviderConfig() {
+  let apiKey = Deno.env.get('RESEND_API_KEY') || '';
+  let fromEmail = Deno.env.get('AMPA_MAIL_FROM') || '';
+  let senderName = Deno.env.get('AMPA_MAIL_NAME') || 'AMPA Agustinos Granada';
+
+  if (!apiKey) {
+    try {
+      const secretRows = await sql`select decrypted_secret from vault.decrypted_secrets where name='ampa_resend_api_key' limit 1`;
+      apiKey = secretRows[0]?.decrypted_secret || '';
+    } catch {}
+  }
+  if (!fromEmail) {
+    try {
+      const cfg = await sql`select from_email, sender_name from ampa_private.email_config where singleton=true limit 1`;
+      fromEmail = cfg[0]?.from_email || '';
+      senderName = cfg[0]?.sender_name || senderName;
+    } catch {}
+  }
+  return { apiKey, fromEmail, senderName, configured: Boolean(apiKey && fromEmail) };
+}
+
 Deno.serve(async (req: Request) => {
   const path = pathOf(req);
   try {
@@ -446,13 +467,21 @@ Deno.serve(async (req: Request) => {
     }
 
 
+
+    if (path === '/email/status' && req.method === 'GET') {
+      await requireRole(req,['superadmin','admin']);
+      const mailConfig = await getEmailProviderConfig();
+      return reply({ configured: mailConfig.configured, fromEmail: mailConfig.fromEmail || null, senderName: mailConfig.senderName });
+    }
+
     if (path === '/email/family-document' && req.method === 'POST') {
       const u = await requireRole(req,['superadmin','admin']);
       const body = await readBody(req);
-      const resendKey = Deno.env.get('RESEND_API_KEY');
-      const mailFrom = Deno.env.get('AMPA_MAIL_FROM');
-      const senderName = Deno.env.get('AMPA_MAIL_NAME') || 'AMPA Agustinos Granada';
-      if (!resendKey || !mailFrom) return reply({error:'EMAIL_NOT_CONFIGURED'},503);
+      const mailConfig = await getEmailProviderConfig();
+      const resendKey = mailConfig.apiKey;
+      const mailFrom = mailConfig.fromEmail;
+      const senderName = mailConfig.senderName;
+      if (!mailConfig.configured) return reply({error:'EMAIL_NOT_CONFIGURED'},503);
 
       if (!body.familyId || !body.guardianId || !body.subject || !body.contentBase64 || body.documentType !== 'membership-card') {
         return reply({error:'INVALID_EMAIL_REQUEST'},400);
