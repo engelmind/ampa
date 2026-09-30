@@ -124,3 +124,43 @@ export function generateFamiliesPdfReport(
   const safeFilter = filterLabel.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
   doc.save(`listado_familias_ampa_${academicYear.replace('/', '-')}_${safeFilter}.pdf`);
 }
+
+
+export function generateMembershipCardPdf(family: Family, academicYear: string, associationName = 'AMPA Agustinos Granada'): void {
+  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:[86,54] });
+  const main = family.guardians.find((g)=>g.isMainContact) || family.guardians[0];
+  const students = family.students.map((s)=>`${s.firstName} ${s.lastName}`).join(', ');
+
+  doc.setFillColor(30,41,59);
+  doc.roundedRect(0,0,86,54,3,3,'F');
+  doc.setFillColor(225,29,72);
+  doc.rect(0,0,6,54,'F');
+
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(11);
+  doc.text(associationName, 11, 12);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(203,213,225);
+  doc.text(`Curso ${academicYear}`, 11, 17);
+
+  doc.setTextColor(255,255,255);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(12);
+  doc.text(`Familia ${family.familyName}`, 11, 27, {maxWidth:64});
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(226,232,240);
+  doc.text(`Socio: ${family.membershipNumber}`, 11, 34);
+  if (main?.fullName) doc.text(`Contacto: ${main.fullName}`, 11, 39, {maxWidth:64});
+  if (students) doc.text(`Alumnos: ${students}`, 11, 44, {maxWidth:64});
+
+  doc.setFont('helvetica','bold');
+  doc.setTextColor(family.isActiveThisYear ? 134 : 251, family.isActiveThisYear ? 239 : 191, family.isActiveThisYear ? 172 : 36);
+  doc.text(family.isActiveThisYear ? 'SOCIO ACTIVO' : 'PENDIENTE DE RENOVACIÓN', 75, 49, {align:'right'});
+
+  doc.save(`carnet_ampa_${family.membershipNumber}_${academicYear.replace('/','-')}.pdf`);
+}
