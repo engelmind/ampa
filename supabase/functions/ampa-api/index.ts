@@ -116,11 +116,26 @@ function isoFromDDMMAAAA(raw?: string) {
   const d = String(raw || '').replace(/\D/g,'');
   return d.length===8 ? `${d.slice(4,8)}-${d.slice(2,4)}-${d.slice(0,2)}` : null;
 }
-function ddmmyyyyFromIso(v: any) {
+function isoDateFromDb(v: any) {
   if (!v) return '';
-  const s = String(v).slice(0,10);
-  const [y,m,d] = s.split('-');
-  return y && m && d ? `${d}${m}${y}` : '';
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0,10);
+  const raw = String(v).trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0,10);
+}
+function ddmmyyyyFromDb(v: any) {
+  const iso = isoDateFromDb(v);
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}${m}${y}`;
+}
+function birthYearFromDb(v: any, fallback?: any) {
+  const iso = isoDateFromDb(v);
+  if (iso) return Number(iso.slice(0,4));
+  const n = Number(fallback);
+  return Number.isFinite(n) && n > 1900 ? n : 0;
 }
 function safeUser(u:any) {
   return { id:u.id, username:u.username, email:u.email, name:u.name, role:u.role, isActive:u.is_active, lastLoginAt:u.last_login_at };
@@ -138,17 +153,17 @@ async function loadFamilies() {
   return families.map((f:any)=>({
     id:f.id, membershipNumber:f.membership_number, familyName:f.family_name,
     isActiveThisYear:f.is_active_this_year, registrationAcademicYear:f.registration_academic_year,
-    registrationDate:String(f.registration_date).slice(0,10), address:{street:f.street,city:f.city,postalCode:f.postal_code},
+    registrationDate:isoDateFromDb(f.registration_date), address:{street:f.street,city:f.city,postalCode:f.postal_code},
     notes:f.notes || '', updatedAt:f.updated_at,
     activeYears:renewals.filter((r:any)=>r.family_id===f.id && r.status==='renewed').map((r:any)=>r.academic_year),
     guardians:guardians.filter((g:any)=>g.family_id===f.id).map((g:any)=>({
       id:g.id, fullName:[g.first_name,g.last_name].filter(Boolean).join(' '), firstName:g.first_name,lastName:g.last_name,
       relationship:g.relationship,dni:g.dni||'',phone:g.phone||'',email:g.email||'',isMainContact:g.is_main_contact,
-      birthDateDDMMAAAA:ddmmyyyyFromIso(g.birth_date),communicationsConsent:g.communications_consent,privacyConsent:g.privacy_consent
+      birthDateDDMMAAAA:ddmmyyyyFromDb(g.birth_date),communicationsConsent:g.communications_consent,privacyConsent:g.privacy_consent
     })),
     students:students.filter((s:any)=>s.family_id===f.id).map((s:any)=>({
-      id:s.id,firstName:s.first_name,lastName:s.last_name,dni:s.dni||'',birthDateDDMMAAAA:ddmmyyyyFromIso(s.birth_date),
-      birthYear:s.birth_year||0,courseOffset:s.course_offset,groupLetter:s.group_letter||'',academicYear:s.academic_year,
+      id:s.id,firstName:s.first_name,lastName:s.last_name,dni:s.dni||'',birthDateDDMMAAAA:ddmmyyyyFromDb(s.birth_date),
+      birthYear:birthYearFromDb(s.birth_date,s.birth_year),courseOffset:s.course_offset,groupLetter:s.group_letter||'',academicYear:s.academic_year,
       school:s.school||'',className:s.class_name||'',allergies:s.allergies||'',specialNeeds:s.special_needs||'',authorizedPhoto:s.authorized_photo
     }))
   }));
