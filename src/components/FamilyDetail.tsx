@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarDays, History, Mail, MapPin, Phone, ShieldCheck, UserRound, GraduationCap, Pencil, RefreshCcw, X } from 'lucide-react';
+import { CalendarDays, History, Mail, MapPin, Phone, ShieldCheck, UserRound, GraduationCap, Pencil, RefreshCcw, X, CreditCard, Trash2 } from 'lucide-react';
 import { ActivityLogEntry, Family, SystemSettings } from '../types/family';
 import { calculateStudentCourse } from '../utils/academicCourse';
 import { parseDDMMAAAA } from '../utils/dateUtils';
+import { generateMembershipCardPdf } from '../utils/pdfExportUtils';
+import { getFamilyDataIssues } from '../utils/dataQuality';
 
 type Section = 'family' | 'students' | 'history' | 'privacy';
 
@@ -14,10 +16,13 @@ interface Props {
   onClose: () => void;
   onEdit: () => void;
   onToggleRenewal: () => void;
+  canDelete?: boolean;
+  onDelete?: () => void;
 }
 
-export function FamilyDetail({ family, settings, activity, canEdit, onClose, onEdit, onToggleRenewal }: Props) {
+export function FamilyDetail({ family, settings, activity, canEdit, onClose, onEdit, onToggleRenewal, canDelete, onDelete }: Props) {
   const [section, setSection] = useState<Section>('family');
+  const issues = useMemo(()=>getFamilyDataIssues(family),[family]);
   const familyActivity = useMemo(
     () => activity.filter((a) => a.entityType === 'family' && a.entityId === family.id),
     [activity, family.id]
@@ -70,6 +75,8 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
                   <div className="mt-2 text-sm font-bold">{family.activeYears.length} curso(s)</div>
                 </div>
               </div>
+
+              {issues.length>0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="text-xs font-black uppercase tracking-wider text-amber-700">Datos que conviene completar</div><div className="mt-2 flex flex-wrap gap-2">{issues.map((i)=><span key={i.code} className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-amber-800">{i.label}</span>)}</div></section>}
 
               <section>
                 <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Padres, madres y tutores</h3>
@@ -157,7 +164,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
             <div className="space-y-3">
               <div className="rounded-2xl border border-slate-200 p-4">
                 <h3 className="text-sm font-extrabold">Consentimientos y comunicaciones</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Esta sección prepara la futura gestión de consentimientos. La validación jurídica y el registro definitivo deberán quedar respaldados por el backend.</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Los consentimientos se almacenan en la ficha central de cada adulto responsable y quedan incluidos en el historial de modificaciones.</p>
               </div>
               {family.guardians.map((g) => (
                 <div key={g.id} className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
@@ -170,6 +177,8 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
           )}
 
           <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+            <button type="button" onClick={()=>generateMembershipCardPdf(family,settings.activeAcademicYear,settings.associationName)} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><CreditCard size={15}/> Carnet PDF</button>
+            {canDelete && onDelete && <button type="button" onClick={onDelete} className="flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 text-xs font-bold text-rose-700"><Trash2 size={15}/> Eliminar</button>}
             {canEdit && <button type="button" onClick={onEdit} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar familia</button>}
             {canEdit && <button type="button" onClick={onToggleRenewal} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{family.isActiveThisYear ? 'Marcar no renovada' : 'Registrar renovación'}</button>}
           </div>
