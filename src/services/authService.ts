@@ -11,6 +11,7 @@ export const INITIAL_USERS: AppUser[] = [
     email: 'superadmin@demo.invalid',
     role: 'superadmin',
     password: 'demo-super-2026',
+    isActive: true,
   },
   {
     id: 'usr-admin-demo',
@@ -19,6 +20,7 @@ export const INITIAL_USERS: AppUser[] = [
     email: 'admin@demo.invalid',
     role: 'admin',
     password: 'demo-admin-2026',
+    isActive: true,
   },
   {
     id: 'usr-user-demo',
@@ -27,6 +29,7 @@ export const INITIAL_USERS: AppUser[] = [
     email: 'consulta@demo.invalid',
     role: 'user',
     password: 'demo-consulta-2026',
+    isActive: true,
   },
 ];
 
@@ -101,12 +104,15 @@ export function authenticate(usernameOrEmail: string, password: string): AppUser
   const found = users.find(
     (u) =>
       (u.username.toLowerCase() === query || u.email?.toLowerCase() === query) &&
-      u.password === pass
+      u.password === pass &&
+      u.isActive !== false
   );
 
   if (found) {
-    setCurrentUserSession(found);
-    return found;
+    const updatedUser = { ...found, lastLoginAt: new Date().toISOString(), isActive: found.isActive !== false };
+    saveUser(updatedUser);
+    setCurrentUserSession(updatedUser);
+    return updatedUser;
   }
   return null;
 }
