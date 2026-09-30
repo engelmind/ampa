@@ -67,6 +67,8 @@ export const backendApi = {
   restoreBackup: (id:string, confirmation:string) =>
     request<{ ok:boolean }>('/api/backups/restore', { method:'POST', body:JSON.stringify({ id, confirmation }) }),
 
+  emailStatus: () => request<{ configured:boolean; fromEmail?:string|null; senderName?:string }>('/api/email/status'),
+
   sendFamilyDocument: (payload: {
     familyId: string;
     guardianId: string;
