@@ -1,9 +1,10 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Family } from '../types/family';
+import QRCode from 'qrcode';
+import { Family, SystemSettings } from '../types/family';
 import { calculateStudentCourse } from './academicCourse';
 import { parseDDMMAAAA } from './dateUtils';
-import QRCode from 'qrcode';
+import { getFamilyDataIssues } from './dataQuality';
 
 export interface PdfReportOptions {
   title?: string;
@@ -15,228 +16,300 @@ export interface PdfReportOptions {
   orientation?: 'landscape' | 'portrait';
 }
 
-export function generateFamiliesPdfReport(
-  families: Family[],
-  options: PdfReportOptions
-): void {
-  const orientation = options.orientation || 'landscape';
-  const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
-  const associationName = options.associationName || 'AMPA Agustinos Granada';
-  const academicYear = options.academicYear || '2025/2026';
-  const filterLabel = options.filterLabel || 'Todas las familias';
-  const dateStr = new Date().toLocaleDateString('es-ES', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+export interface PdfArtifact {
+  blob: Blob;
+  filename: string;
+  title: string;
+  description?: string;
+}
 
+export type ReportKind =
+  | 'family-census'
+  | 'active-families'
+  | 'pending-renewal'
+  | 'students'
+  | 'students-by-course'
+  | 'guardians'
+  | 'privacy'
+  | 'incomplete'
+  | 'renewal-history'
+  | 'compact-family-cards'
+  | 'sensitive-needs';
+
+const esc = (value: unknown) => String(value ?? '').replace(/[<>]/g,'');
+
+const artifact = (doc: jsPDF, filename: string, title: string, description?: string): PdfArtifact => ({
+  blob: doc.output('blob'),
+  filename,
+  title,
+  description,
+});
+
+export function downloadPdfArtifact(item: PdfArtifact): void {
+  const url = URL.createObjectURL(item.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = item.filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function drawReportHeader(doc: jsPDF, options: PdfReportOptions, title: string, detail = '') {
   const pageWidth = doc.internal.pageSize.getWidth();
-  doc.setFillColor(220, 38, 38);
-  doc.rect(0, 0, pageWidth, 7, 'F');
-  doc.setFillColor(251, 191, 36);
-  doc.rect(0, 7, pageWidth, 2, 'F');
+  doc.setFillColor(220,38,38);
+  doc.rect(0,0,pageWidth,7,'F');
+  doc.setFillColor(251,191,36);
+  doc.rect(0,7,pageWidth,2,'F');
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(associationName, 14, 18);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(15);
+  doc.setTextColor(30,41,59);
+  doc.text(options.associationName || 'AMPA Agustinos Granada',14,18);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`Colegio San Agustín Granada · Curso Escolar ${academicYear}`, 14, 23);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  doc.setTextColor(100,116,139);
+  doc.text(`${options.schoolName || 'Colegio San Agustín Granada'} · Curso ${options.academicYear}`,14,23);
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('helvetica','bold');
   doc.setFontSize(11);
-  doc.setTextColor(220, 38, 38);
-  doc.text(options.title || 'LISTADO OFICIAL DE FAMILIAS Y ALUMNOS', 14, 30);
+  doc.setTextColor(220,38,38);
+  doc.text(title.toUpperCase(),14,30);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  doc.text(`Criterio: ${filterLabel} | Expedido: ${dateStr}`, 14, 35);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71,85,105);
+  const issued = new Date().toLocaleString('es-ES');
+  doc.text(`${detail || options.filterLabel || 'Censo completo'} · ${issued}`,14,35,{maxWidth:pageWidth-28});
+}
 
-  const totalStudents = families.reduce((acc, f) => acc + (f.students?.length || 0), 0);
-  const totalGuardians = families.reduce((acc, f) => acc + (f.guardians?.length || 0), 0);
-  const activeCount = families.filter((f) => f.isActiveThisYear).length;
+function addFooter(doc: jsPDF, label = 'Documento interno AMPA') {
+  const count = doc.getNumberOfPages();
+  for(let page=1;page<=count;page++){
+    doc.setPage(page);
+    const w=doc.internal.pageSize.getWidth();
+    const h=doc.internal.pageSize.getHeight();
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148,163,184);
+    doc.text(`${label} · Página ${page} de ${count}`,10,h-5);
+    doc.text('Confidencial · Uso autorizado',w-10,h-5,{align:'right'});
+  }
+}
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(30, 41, 59);
-  doc.text(
-    `Total: ${families.length} familias (${activeCount} activas) | ${totalStudents} alumnos | ${totalGuardians} tutores`,
-    pageWidth - 14, 35, { align: 'right' }
-  );
+function tableArtifact(
+  title:string,
+  filename:string,
+  head:string[],
+  body:(string|number)[][],
+  options:PdfReportOptions,
+  columnStyles:any = {},
+  detail = '',
+  orientation:'landscape'|'portrait'='landscape'
+):PdfArtifact{
+  const doc=new jsPDF({orientation,unit:'mm',format:'a4'});
+  drawReportHeader(doc,options,title,detail);
+  autoTable(doc,{
+    startY:39,
+    head:[head],
+    body,
+    theme:'grid',
+    headStyles:{fillColor:[30,41,59],textColor:[255,255,255],fontStyle:'bold',fontSize:7.5,cellPadding:2.3},
+    bodyStyles:{fontSize:7.2,cellPadding:2.1,textColor:[30,41,59],valign:'top'},
+    alternateRowStyles:{fillColor:[248,250,252]},
+    columnStyles,
+    margin:{left:10,right:10,bottom:12},
+  });
+  addFooter(doc,title);
+  return artifact(doc,filename,title,`${body.length} registros`);
+}
 
-  const tableRows = families.map((fam) => {
-    const guardiansText = fam.guardians.map((g) => {
-      const contactInfo = [g.phone, g.email].filter(Boolean).join(' · ');
-      const birth = g.birthDateDDMMAAAA ? ` (F.Nac: ${parseDDMMAAAA(g.birthDateDDMMAAAA).formattedDisplay})` : '';
-      return `• ${g.fullName}${birth}${contactInfo ? `\n  ${contactInfo}` : ''}`;
-    }).join('\n');
-
-    const studentsText = fam.students.map((s) => {
-      const course = calculateStudentCourse(s, academicYear);
-      const birth = s.birthDateDDMMAAAA
-        ? ` [${parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay}]`
-        : ` [${s.birthYear}]`;
-      const extra = s.allergies ? ` (Alérgica/o: ${s.allergies})` : '';
-      return `• ${s.firstName} ${s.lastName}${birth}: ${course.fullDisplay}${extra}`;
-    }).join('\n');
-
+export function createFamiliesPdfArtifact(families:Family[],options:PdfReportOptions):PdfArtifact{
+  const rows=families.map((fam)=>{
+    const main=fam.guardians.find((g)=>g.isMainContact)||fam.guardians[0];
+    const students=fam.students.map((s)=>`${s.firstName} ${s.lastName} · ${calculateStudentCourse(s,options.academicYear).fullDisplay}`).join('\n');
     return [
       fam.membershipNumber,
       `Familia ${fam.familyName}`,
-      guardiansText || 'Sin tutores registrados',
-      studentsText || 'Sin alumnos registrados',
-      fam.isActiveThisYear ? 'ACTIVO' : 'INACTIVO',
+      main ? `${main.fullName}\n${[main.phone,main.email].filter(Boolean).join(' · ')}` : 'Sin contacto',
+      students || 'Sin alumnos',
+      fam.isActiveThisYear ? 'ACTIVA':'PENDIENTE',
     ];
   });
-
-  autoTable(doc, {
-    startY: 38,
-    head: [['Nº SOCIO', 'FAMILIA', 'TUTORES LEGALES & CONTACTO', 'ALUMNOS / HIJOS (CURSO & F. NAC)', 'ESTADO']],
-    body: tableRows,
-    theme: 'grid',
-    headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, halign: 'left', cellPadding: 3 },
-    bodyStyles: { fontSize: 8, cellPadding: 2.5, textColor: [30, 41, 59], valign: 'top' },
-    columnStyles: {
-      0: { cellWidth: 22, fontStyle: 'bold', halign: 'center' },
-      1: { cellWidth: 38, fontStyle: 'bold' },
-      2: { cellWidth: orientation === 'landscape' ? 85 : 55 },
-      3: { cellWidth: 'auto' },
-      4: { cellWidth: 20, halign: 'center', fontStyle: 'bold' },
-    },
-    alternateRowStyles: { fillColor: [248, 250, 252] },
-    didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 4) {
-        data.cell.styles.textColor = data.cell.raw === 'ACTIVO' ? [16, 185, 129] : [148, 163, 184];
-      }
-    },
-    margin: { left: 14, right: 14, bottom: 18 },
-    didDrawPage: (data) => {
-      const pageNumber = doc.getNumberOfPages();
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(148, 163, 184);
-      doc.text(`AMPA Agustinos Granada · Documento Oficial de Censo · Página ${data.pageNumber} de ${pageNumber}`, 14, doc.internal.pageSize.getHeight() - 8);
-      doc.text('Confidencial - Uso exclusivo de la Asociación de Familias', pageWidth - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
-    },
-  });
-
-  const safeFilter = filterLabel.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-  doc.save(`listado_familias_ampa_${academicYear.replace('/', '-')}_${safeFilter}.pdf`);
+  return tableArtifact(
+    options.title || 'Censo de familias',
+    `censo_familias_${options.academicYear.replace('/','-')}.pdf`,
+    ['Nº SOCIO','FAMILIA','CONTACTO PRINCIPAL','ALUMNOS / CURSO','ESTADO'],
+    rows,options,{0:{cellWidth:22,fontStyle:'bold'},1:{cellWidth:42,fontStyle:'bold'},2:{cellWidth:72},3:{cellWidth:'auto'},4:{cellWidth:24,halign:'center'}},
+    options.filterLabel || `${families.length} familias`
+  );
 }
 
+export function generateFamiliesPdfReport(families:Family[],options:PdfReportOptions):void{
+  downloadPdfArtifact(createFamiliesPdfArtifact(families,options));
+}
 
-export async function generateMembershipCardPdf(
-  family: Family,
-  academicYear: string,
-  associationName = 'AMPA Agustinos Granada'
-): Promise<void> {
-  const width = 85.6;
-  const height = 54;
-  const doc = new jsPDF({ orientation:'landscape', unit:'mm', format:[width,height] });
-
-  const members = [
+async function buildMembershipCardDoc(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'){
+  const width=85.6, height=54;
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:[width,height]});
+  const members=[
     ...family.guardians.map((g)=>g.fullName || [g.firstName,g.lastName].filter(Boolean).join(' ')),
     ...family.students.map((s)=>`${s.firstName} ${s.lastName}`),
   ].map((x)=>x.trim()).filter(Boolean);
+  const visible=members.slice(0,5);
+  if(members.length>5) visible[4]=`${visible[4]} · +${members.length-5}`;
+  const digits=(family.membershipNumber.match(/\d+/)?.[0]||family.membershipNumber).slice(-4);
+  const qrTarget=`${window.location.origin}/?socio=${encodeURIComponent(family.membershipNumber)}`;
+  const qrData=await QRCode.toDataURL(qrTarget,{errorCorrectionLevel:'M',margin:0,width:360,color:{dark:'#000000',light:'#FFFFFF'}});
 
-  const visibleMembers = members.slice(0,5);
-  if (members.length > 5) visibleMembers[4] = `${visibleMembers[4]} · +${members.length-5}`;
+  doc.setFillColor(246,28,35); doc.roundedRect(0,0,width,height,3.6,3.6,'F');
+  doc.setFillColor(239,35,43); doc.circle(78,7,18,'F');
+  doc.setFillColor(232,27,35); doc.circle(4,52,14,'F');
+  doc.setFillColor(250,204,21); doc.rect(.8,height-1.6,width-1.6,1.1,'F');
 
-  const memberDigits = (family.membershipNumber.match(/\d+/)?.[0] || family.membershipNumber).slice(-4);
-  const qrTarget = `${window.location.origin}/?socio=${encodeURIComponent(family.membershipNumber)}`;
-  const qrData = await QRCode.toDataURL(qrTarget,{
-    errorCorrectionLevel:'M',
-    margin:0,
-    width:360,
-    color:{dark:'#000000',light:'#FFFFFF'},
-  });
+  doc.setFillColor(255,255,255); doc.roundedRect(4,4,9.5,9.5,1.2,1.2,'F');
+  doc.setTextColor(220,27,36); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('AG',8.75,10.2,{align:'center'});
 
-  // Tarjeta 85,6 x 54 mm, siguiendo la referencia visual aportada.
-  doc.setFillColor(246,28,35);
-  doc.roundedRect(0,0,width,height,3.6,3.6,'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(8.4); doc.text('AMPA AGUSTINOS',15.3,8.1);
+  doc.setFontSize(5.3); doc.text('GRANADA',15.3,11.1);
+  const year=academicYear.replace('/','-');
+  doc.setFontSize(4.5); doc.text('CURSO ESCOLAR',79.8,5.9,{align:'right'});
+  doc.setTextColor(253,224,15); doc.setFontSize(10.5); doc.text(year,79.8,11.2,{align:'right'});
 
-  // Formas tonales sutiles del fondo.
-  doc.setFillColor(239,35,43);
-  doc.circle(78,7,18,'F');
-  doc.setFillColor(232,27,35);
-  doc.circle(4,52,14,'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(4.5); doc.text('FAMILIA',4.2,18.6);
+  doc.setFontSize(family.familyName.length>28?9.2:11.2); doc.text(`Familia ${family.familyName}`,4.2,24.6,{maxWidth:57});
 
-  // Línea amarilla inferior.
-  doc.setFillColor(250,204,21);
-  doc.rect(0.8,height-1.6,width-1.6,1.1,'F');
+  doc.setDrawColor(255,102,107); doc.setFillColor(248,54,61); doc.setLineWidth(.35); doc.roundedRect(4.2,30.5,10.3,12.2,1.3,1.3,'FD');
+  doc.setTextColor(255,255,255); doc.setFontSize(3.7); doc.text('Nº SOCIO',9.35,34.3,{align:'center'});
+  doc.setFontSize(digits.length>3?10.5:12.5); doc.text(digits.padStart(3,'0'),9.35,40.5,{align:'center'});
 
-  // Isotipo.
-  doc.setFillColor(255,255,255);
-  doc.roundedRect(4,4,9.5,9.5,1.2,1.2,'F');
-  doc.setTextColor(220,27,36);
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8);
-  doc.text('AG',8.75,10.2,{align:'center'});
+  doc.setDrawColor(255,148,152); doc.setLineWidth(.3); doc.line(16.7,30.7,16.7,44.9);
+  doc.setTextColor(255,255,255); doc.setFontSize(3.8); doc.text('INTEGRANTES',18.4,33);
+  doc.setFont('helvetica','bold'); doc.setFontSize(visible.length>=5?5.5:6.2);
+  visible.forEach((name,index)=>doc.text(name,18.4,36.2+index*2.85,{maxWidth:41}));
 
-  // Marca.
-  doc.setTextColor(255,255,255);
-  doc.setFont('helvetica','bold');
-  doc.setFontSize(8.4);
-  doc.text('AMPA AGUSTINOS',15.3,8.1);
-  doc.setFontSize(5.3);
-  doc.text('GRANADA',15.3,11.1);
-
-  // Curso.
-  const formattedYear = academicYear.replace('/','-');
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(4.5);
-  doc.text('CURSO ESCOLAR',79.8,5.9,{align:'right'});
-  doc.setTextColor(253,224,15);
-  doc.setFontSize(10.5);
-  doc.text(formattedYear,79.8,11.2,{align:'right'});
-
-  // Familia.
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(4.5);
-  doc.text('FAMILIA',4.2,18.6);
-  doc.setFontSize(family.familyName.length > 28 ? 9.2 : 11.2);
-  doc.text(`Familia ${family.familyName}`,4.2,24.6,{maxWidth:57});
-
-  // Bloque socio.
-  doc.setDrawColor(255,102,107);
-  doc.setFillColor(248,54,61);
-  doc.setLineWidth(0.35);
-  doc.roundedRect(4.2,30.5,10.3,12.2,1.3,1.3,'FD');
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(3.7);
-  doc.text('Nº SOCIO',9.35,34.3,{align:'center'});
-  doc.setFontSize(memberDigits.length > 3 ? 10.5 : 12.5);
-  doc.text(memberDigits.padStart(3,'0'),9.35,40.5,{align:'center'});
-
-  // Separador + integrantes.
-  doc.setDrawColor(255,148,152);
-  doc.setLineWidth(0.3);
-  doc.line(16.7,30.7,16.7,44.9);
-  doc.setTextColor(255,255,255);
-  doc.setFontSize(3.8);
-  doc.text('INTEGRANTES',18.4,33.0);
-  doc.setFont('helvetica','bold');
-  const memberFont = visibleMembers.length >= 5 ? 5.5 : 6.2;
-  doc.setFontSize(memberFont);
-  visibleMembers.forEach((name,index)=>{
-    doc.text(name,18.4,36.2 + index * 2.85,{maxWidth:41});
-  });
-
-  // QR en marco blanco.
-  doc.setFillColor(255,255,255);
-  doc.roundedRect(63.8,29.7,18.3,18.3,1.2,1.2,'F');
+  doc.setFillColor(255,255,255); doc.roundedRect(63.8,29.7,18.3,18.3,1.2,1.2,'F');
   doc.addImage(qrData,'PNG',64.6,30.5,16.7,16.7);
 
-  // Estado discreto.
-  if (!family.isActiveThisYear) {
-    doc.setFillColor(253,224,15);
-    doc.roundedRect(62.0,49.0,20.0,3.0,1,1,'F');
-    doc.setTextColor(126,34,34);
-    doc.setFontSize(4.3);
-    doc.text('PENDIENTE DE RENOVACIÓN',72.0,51.1,{align:'center'});
+  if(!family.isActiveThisYear){
+    doc.setFillColor(253,224,15); doc.roundedRect(62,49,20,3,1,1,'F');
+    doc.setTextColor(126,34,34); doc.setFontSize(4.3); doc.text('PENDIENTE DE RENOVACIÓN',72,51.1,{align:'center'});
+  }
+  return doc;
+}
+
+export async function createMembershipCardPdfArtifact(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'):Promise<PdfArtifact>{
+  const doc=await buildMembershipCardDoc(family,academicYear,associationName);
+  const year=academicYear.replace('/','-');
+  return artifact(doc,`carnet_ampa_${family.membershipNumber}_${year}.pdf`,`Carnet · Familia ${family.familyName}`,'85,6 × 54 mm');
+}
+
+export async function generateMembershipCardPdf(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'):Promise<void>{
+  downloadPdfArtifact(await createMembershipCardPdfArtifact(family,academicYear,associationName));
+}
+
+function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):PdfArtifact{
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const pageW=210,pageH=297, margin=8, gapX=5,gapY=4;
+  const cardW=(pageW-margin*2-gapX)/2;
+  const cardH=(pageH-margin*2-gapY*3)/4;
+  const perPage=8;
+
+  families.forEach((family,index)=>{
+    const slot=index%perPage;
+    if(index>0&&slot===0) doc.addPage();
+    const col=slot%2,row=Math.floor(slot/2);
+    const x=margin+col*(cardW+gapX), y=margin+row*(cardH+gapY);
+    const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
+    const issues=getFamilyDataIssues(family);
+    const students=family.students.slice(0,4).map((s)=>`${s.firstName} ${s.lastName} · ${calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay}`);
+
+    doc.setDrawColor(226,232,240); doc.setFillColor(255,255,255); doc.roundedRect(x,y,cardW,cardH,2,2,'FD');
+    doc.setFillColor(family.isActiveThisYear?16:245,family.isActiveThisYear?185:158,family.isActiveThisYear?129:11);
+    doc.roundedRect(x,y,cardW,5,2,2,'F');
+    doc.setFont('helvetica','bold'); doc.setTextColor(15,23,42); doc.setFontSize(8);
+    doc.text(`Familia ${family.familyName}`,x+4,y+11,{maxWidth:cardW-30});
+    doc.setFontSize(6.2); doc.setTextColor(100,116,139); doc.text(family.membershipNumber,x+cardW-4,y+11,{align:'right'});
+
+    doc.setFont('helvetica','normal'); doc.setFontSize(5.8); doc.setTextColor(51,65,85);
+    let cy=y+16;
+    if(main){
+      doc.setFont('helvetica','bold'); doc.text(main.fullName,x+4,cy,{maxWidth:cardW-8}); cy+=3.3;
+      doc.setFont('helvetica','normal'); doc.text([main.phone,main.email].filter(Boolean).join(' · ')||'Sin teléfono/email',x+4,cy,{maxWidth:cardW-8}); cy+=4;
+    }
+    doc.setFont('helvetica','bold'); doc.text('ALUMNOS',x+4,cy); cy+=3.2;
+    doc.setFont('helvetica','normal');
+    students.forEach((line)=>{doc.text(line,x+4,cy,{maxWidth:cardW-8}); cy+=3.3;});
+    if(family.students.length>4){doc.text(`+${family.students.length-4} alumno(s)`,x+4,cy);cy+=3.3;}
+
+    const address=[family.address.street,[family.address.postalCode,family.address.city].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+    if(address){doc.setTextColor(100,116,139);doc.text(address,x+4,y+cardH-7,{maxWidth:cardW-8});}
+    if(issues.length){
+      doc.setTextColor(180,83,9);doc.setFont('helvetica','bold');doc.text(`${issues.length} dato(s) por revisar`,x+cardW-4,y+cardH-3,{align:'right'});
+    }
+  });
+
+  addFooter(doc,'Fichas familiares compactas');
+  return artifact(doc,`fichas_familiares_compactas_${settings.activeAcademicYear.replace('/','-')}.pdf`,'Fichas familiares compactas',`${families.length} familias · 8 fichas por página`);
+}
+
+export function createReportPdfArtifact(kind:ReportKind,families:Family[],settings:SystemSettings):PdfArtifact{
+  const opts:PdfReportOptions={academicYear:settings.activeAcademicYear,schoolName:settings.schoolName,associationName:settings.associationName};
+  const active=families.filter((f)=>f.isActiveThisYear);
+  const pending=families.filter((f)=>!f.isActiveThisYear);
+
+  if(kind==='family-census') return createFamiliesPdfArtifact(families,{...opts,title:'Censo de familias',filterLabel:`${families.length} familias`});
+  if(kind==='active-families') return createFamiliesPdfArtifact(active,{...opts,title:'Familias activas',filterLabel:`${active.length} familias renovadas`});
+  if(kind==='pending-renewal') return createFamiliesPdfArtifact(pending,{...opts,title:'Pendientes de renovación',filterLabel:`${pending.length} familias pendientes`});
+  if(kind==='compact-family-cards') return createCompactFamilyCardsPdf(families,settings);
+
+  if(kind==='students'){
+    const rows=families.flatMap((f)=>f.students.map((s)=>[
+      `${s.firstName} ${s.lastName}`,f.familyName,
+      s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),
+      calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay,s.groupLetter||'',f.isActiveThisYear?'ACTIVA':'PENDIENTE'
+    ]));
+    return tableArtifact('Listado de alumnos',`alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','F. NAC.','CURSO','GRUPO','FAMILIA'],rows,opts,{0:{cellWidth:48},1:{cellWidth:43},2:{cellWidth:24},3:{cellWidth:36},4:{cellWidth:18},5:{cellWidth:25}});
   }
 
-  doc.save(`carnet_ampa_${family.membershipNumber}_${formattedYear}.pdf`);
+  if(kind==='students-by-course'){
+    const data=families.flatMap((f)=>f.students.map((s)=>({f,s,c:calculateStudentCourse(s,settings.activeAcademicYear)})))
+      .sort((a,b)=>a.c.ageInAcademicYear-b.c.ageInAcademicYear || a.s.lastName.localeCompare(b.s.lastName,'es'));
+    const rows=data.map(({f,s,c})=>[c.fullDisplay,`${s.firstName} ${s.lastName}`,f.familyName,s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),s.groupLetter||'']);
+    return tableArtifact('Alumnos por curso',`alumnos_por_curso_${settings.activeAcademicYear.replace('/','-')}.pdf`,['CURSO','ALUMNO/A','FAMILIA','F. NAC.','GRUPO'],rows,opts,{0:{cellWidth:38,fontStyle:'bold'},1:{cellWidth:55},2:{cellWidth:52},3:{cellWidth:28},4:{cellWidth:20}});
+  }
+
+  if(kind==='guardians'){
+    const rows=families.flatMap((f)=>f.guardians.map((g)=>[
+      g.fullName,f.familyName,g.relationship.replace('_',' '),g.phone||'',g.email||'',g.isMainContact?'Principal':''
+    ]));
+    return tableArtifact('Tutores y contactos',`tutores_contactos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['TUTOR/A','FAMILIA','RELACIÓN','TELÉFONO','EMAIL','CONTACTO'],rows,opts,{0:{cellWidth:50},1:{cellWidth:45},2:{cellWidth:27},3:{cellWidth:32},4:{cellWidth:75},5:{cellWidth:24}});
+  }
+
+  if(kind==='privacy'){
+    const rows=families.flatMap((f)=>f.guardians.map((g)=>[
+      f.familyName,g.fullName,g.email||'',g.communicationsConsent===true?'SÍ':'NO/PEND.',g.privacyConsent===true?'SÍ':'NO/PEND.'
+    ]));
+    return tableArtifact('Consentimientos y privacidad',`consentimientos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['FAMILIA','ADULTO RESPONSABLE','EMAIL','COMUNICACIONES','PRIVACIDAD'],rows,opts,{0:{cellWidth:50},1:{cellWidth:63},2:{cellWidth:75},3:{cellWidth:34},4:{cellWidth:34}});
+  }
+
+  if(kind==='incomplete'){
+    const incomplete=families.filter((f)=>getFamilyDataIssues(f).length);
+    const rows=incomplete.map((f)=>[f.membershipNumber,f.familyName,getFamilyDataIssues(f).map((i)=>i.label).join('\n'),f.isActiveThisYear?'ACTIVA':'PENDIENTE']);
+    return tableArtifact('Fichas incompletas',`fichas_incompletas_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','DATOS A REVISAR','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:52},2:{cellWidth:'auto'},3:{cellWidth:28}});
+  }
+
+  if(kind==='renewal-history'){
+    const rows=families.map((f)=>[f.membershipNumber,f.familyName,(f.activeYears||[]).join(', ')||'Sin renovaciones',f.registrationAcademicYear||'',f.isActiveThisYear?'ACTIVA':'PENDIENTE']);
+    return tableArtifact('Histórico de renovaciones',`historico_renovaciones_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','CURSOS ACTIVOS','CURSO ALTA','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:55},2:{cellWidth:'auto'},3:{cellWidth:33},4:{cellWidth:28}});
+  }
+
+  if(kind==='sensitive-needs'){
+    const rows=families.flatMap((f)=>f.students.filter((s)=>s.allergies||s.specialNeeds).map((s)=>[
+      `${s.firstName} ${s.lastName}`,f.familyName,calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay,s.allergies||'',s.specialNeeds||''
+    ]));
+    return tableArtifact('Alergias y necesidades especiales',`datos_restringidos_alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','CURSO','ALERGIAS / INTOLERANCIAS','NECESIDADES'],rows,opts,{0:{cellWidth:50},1:{cellWidth:44},2:{cellWidth:37},3:{cellWidth:72},4:{cellWidth:74}},'Acceso restringido · Datos especialmente sensibles');
+  }
+
+  return createFamiliesPdfArtifact(families,opts);
 }
