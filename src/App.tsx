@@ -9,6 +9,7 @@ import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
 import { calculateStudentCourse } from './utils/academicCourse';
 import { familyMatchesStage, getAvailableAcademicYears, getFamilyDataIssues } from './utils/dataQuality';
+import { generateFamiliesPdfReport } from './utils/pdfExportUtils';
 import { LoginScreen } from './components/LoginScreen';
 import { SetupScreen } from './components/SetupScreen';
 import { AmpaLogo } from './components/AmpaLogo';
@@ -551,6 +552,7 @@ export default function App() {
                 <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Directorio</p><h1 className="text-2xl font-black">Familias asociadas</h1></div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={downloadCSV} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> Exportar CSV</button>
+                  <button type="button" onClick={()=>generateFamiliesPdfReport(filtered,{academicYear:settings.activeAcademicYear,associationName:settings.associationName,schoolName:settings.schoolName,filterLabel:`${filtered.length} familias · filtros del directorio`})} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> PDF filtrado</button>
                   {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
                 </div>
               </div>
