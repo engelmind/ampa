@@ -7,6 +7,8 @@ export interface AppUser {
   role: AppRole;
   email?: string;
   password?: string;
+  isActive?: boolean;
+  lastLoginAt?: string;
 }
 
 export type EducationalStage = 'infantil' | 'primaria' | 'secundaria' | 'bachillerato' | 'graduado';
@@ -22,9 +24,10 @@ export interface Guardian {
   phone: string;
   email: string;
   isMainContact: boolean;
-  /** Formato interno DDMMAAAA; la IU lo muestra como DD/MM/AAAA. */
   birthDateDDMMAAAA?: string;
   birthDate?: string;
+  communicationsConsent?: boolean;
+  privacyConsent?: boolean;
 }
 
 export interface Student {
@@ -33,11 +36,13 @@ export interface Student {
   lastName: string;
   dni?: string;
   birthYear: number;
-  /** Formato interno DDMMAAAA; la IU lo muestra como DD/MM/AAAA. */
   birthDateDDMMAAAA?: string;
   birthDate?: string;
   courseOffset: number;
   groupLetter: string;
+  academicYear?: string;
+  school?: string;
+  className?: string;
   allergies?: string;
   specialNeeds?: string;
   authorizedPhoto: boolean;
@@ -49,6 +54,7 @@ export interface Family {
   familyName: string;
   isActiveThisYear: boolean;
   activeYears: string[];
+  registrationAcademicYear?: string;
   guardians: Guardian[];
   students: Student[];
   address: {
@@ -61,6 +67,18 @@ export interface Family {
   updatedAt: string;
 }
 
+export interface ActivityLogEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  timestamp: string;
+  entityType: 'family' | 'user' | 'settings' | 'course' | 'export' | 'import' | 'card';
+  entityId?: string;
+  entityLabel?: string;
+  action: 'create' | 'update' | 'delete' | 'renew' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card';
+  summary: string;
+}
+
 export interface SystemSettings {
   activeAcademicYear: string;
   schoolName: string;
@@ -69,7 +87,7 @@ export interface SystemSettings {
   contactEmail: string;
 }
 
-export type MainViewTab = 'dashboard' | 'families' | 'settings';
+export type MainViewTab = 'dashboard' | 'families' | 'courses' | 'settings';
 
 export interface FamilyFilters {
   searchQuery: string;
