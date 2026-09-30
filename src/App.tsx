@@ -3,14 +3,14 @@ import {
   LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
   UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
   AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby, Activity, BarChart3,
-  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning
+  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning, LayoutGrid, List, Files
 } from 'lucide-react';
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
 import { calculateStudentCourse } from './utils/academicCourse';
 import { familyMatchesStage, getAvailableAcademicYears, getFamilyDataIssues } from './utils/dataQuality';
-import { generateFamiliesPdfReport } from './utils/pdfExportUtils';
+import { PdfArtifact } from './utils/pdfExportUtils';
 import { LoginScreen } from './components/LoginScreen';
 import { SetupScreen } from './components/SetupScreen';
 import { AmpaLogo } from './components/AmpaLogo';
@@ -18,6 +18,9 @@ import { NotificationToast, ToastMessage } from './components/NotificationToast'
 import { FamilyDetail } from './components/FamilyDetail';
 import { CoursesView } from './components/CoursesView';
 import { AdminTools } from './components/AdminTools';
+import { ReportsCenter } from './components/ReportsCenter';
+import { PdfPreviewModal } from './components/PdfPreviewModal';
+import { CompactFamilyGrid } from './components/CompactFamilyGrid';
 
 const defaultSettings: SystemSettings = {
   activeAcademicYear: '2026/2027',
@@ -168,6 +171,9 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [bootState, setBootState] = useState<'loading' | 'setup' | 'login' | 'ready' | 'error'>('loading');
+  const [directoryView,setDirectoryView]=useState<'table'|'cards'>('table');
+  const [reportsOpen,setReportsOpen]=useState(false);
+  const [reportPreview,setReportPreview]=useState<PdfArtifact|null>(null);
 
   const canEdit = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
@@ -478,6 +484,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
+      {reportsOpen && <ReportsCenter allFamilies={families} filteredFamilies={filtered} settings={settings} role={currentUser.role} onPreview={(artifact)=>setReportPreview(artifact)} onClose={()=>setReportsOpen(false)}/>}
+      {reportPreview && <PdfPreviewModal artifact={reportPreview} onClose={()=>setReportPreview(null)}/>} 
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
           <AmpaLogo className="h-11 w-auto max-w-[210px]" />
@@ -645,7 +653,11 @@ export default function App() {
                 <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Directorio</p><h1 className="text-2xl font-black">Familias asociadas</h1></div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={downloadCSV} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> Exportar CSV</button>
-                  <button type="button" onClick={()=>generateFamiliesPdfReport(filtered,{academicYear:settings.activeAcademicYear,associationName:settings.associationName,schoolName:settings.schoolName,filterLabel:`${filtered.length} familias · filtros del directorio`})} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> PDF filtrado</button>
+                  <button type="button" onClick={()=>setReportsOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Files size={16}/> Informes PDF</button>
+                  <div className="flex rounded-xl bg-slate-100 p-1">
+                    <button type="button" onClick={()=>setDirectoryView('table')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='table'?'bg-white shadow-sm':'text-slate-500'}`}><List size={14}/> Tabla</button>
+                    <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='cards'?'bg-white shadow-sm':'text-slate-500'}`}><LayoutGrid size={14}/> Fichas</button>
+                  </div>
                   {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
                 </div>
               </div>
@@ -664,26 +676,31 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="hidden grid-cols-[110px_1.3fr_1fr_110px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 md:grid">
-                  <span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/>
+              {directoryView==='cards' ? (
+                <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={40}/>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  <div className="hidden grid-cols-[110px_1.3fr_1fr_110px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 md:grid">
+                    <span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {filtered.map((f) => {
+                      const g = f.guardians.find((x) => x.isMainContact) || f.guardians[0];
+                      return (
+                        <button key={f.id} type="button" onClick={() => setSelected(f)} className="grid w-full gap-2 p-4 text-left hover:bg-slate-50 md:grid-cols-[110px_1.3fr_1fr_110px_40px] md:items-center md:gap-3">
+                          <span className="font-mono text-xs font-bold text-slate-500">{f.membershipNumber}</span>
+                          <span><span className="block text-sm font-extrabold">Familia {f.familyName}</span><span className="text-[11px] text-slate-400">{f.students.length} alumno{f.students.length === 1 ? '' : 's'}</span></span>
+                          <span className="text-xs text-slate-500">{g?.fullName || 'Sin contacto'}<span className="block text-[11px] text-slate-400">{g?.phone}</span></span>
+                          <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${f.isActiveThisYear ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{f.isActiveThisYear ? 'Activa' : 'Pendiente'}</span>
+                          <ChevronRight size={17} className="hidden text-slate-300 md:block"/>
+                        </button>
+                      );
+                    })}
+                    {filtered.length === 0 && <div className="p-12 text-center text-sm text-slate-400">No hay familias que coincidan con la búsqueda.</div>}
+                  </div>
                 </div>
-                <div className="divide-y divide-slate-100">
-                  {filtered.map((f) => {
-                    const g = f.guardians.find((x) => x.isMainContact) || f.guardians[0];
-                    return (
-                      <button key={f.id} type="button" onClick={() => setSelected(f)} className="grid w-full gap-2 p-4 text-left hover:bg-slate-50 md:grid-cols-[110px_1.3fr_1fr_110px_40px] md:items-center md:gap-3">
-                        <span className="font-mono text-xs font-bold text-slate-500">{f.membershipNumber}</span>
-                        <span><span className="block text-sm font-extrabold">Familia {f.familyName}</span><span className="text-[11px] text-slate-400">{f.students.length} alumno{f.students.length === 1 ? '' : 's'}</span></span>
-                        <span className="text-xs text-slate-500">{g?.fullName || 'Sin contacto'}<span className="block text-[11px] text-slate-400">{g?.phone}</span></span>
-                        <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${f.isActiveThisYear ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{f.isActiveThisYear ? 'Activa' : 'Pendiente'}</span>
-                        <ChevronRight size={17} className="hidden text-slate-300 md:block"/>
-                      </button>
-                    );
-                  })}
-                  {filtered.length === 0 && <div className="p-12 text-center text-sm text-slate-400">No hay familias que coincidan con la búsqueda.</div>}
-                </div>
-              </div>
+  
+              )}
             </div>
           )}
 
@@ -731,6 +748,7 @@ export default function App() {
           onToggleRenewal={() => toggleActive(selected.id)}
           canDelete={currentUser.role === 'superadmin'}
           onDelete={() => void deleteFamily(selected)}
+          onNotify={toast}
         />
       )}
 
