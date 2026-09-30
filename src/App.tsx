@@ -7,13 +7,17 @@ import {
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import {
   getFamilies, saveFamily, toggleFamilyActive, getNextMembershipNumber,
-  getSystemSettings, saveSystemSettings, exportToCSV
+  getSystemSettings, saveSystemSettings, exportToCSV, advanceAcademicYear
 } from './services/db';
 import { getCurrentUser, logout } from './services/authService';
+import { addActivity, getActivityLog } from './services/auditService';
 import { calculateStudentCourse } from './utils/academicCourse';
 import { LoginScreen } from './components/LoginScreen';
 import { AmpaLogo } from './components/AmpaLogo';
 import { NotificationToast, ToastMessage } from './components/NotificationToast';
+import { FamilyDetail } from './components/FamilyDetail';
+import { CoursesView } from './components/CoursesView';
+import { AdminTools } from './components/AdminTools';
 
 const emptyFamily = (membershipNumber: string): Family => ({
   id: `fam-${Date.now()}`,
@@ -140,6 +144,7 @@ export default function App() {
   const [selected, setSelected] = useState<Family | null>(null);
   const [editing, setEditing] = useState<Family | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [activity, setActivity] = useState(getActivityLog());
 
   const canEdit = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
 
@@ -149,12 +154,23 @@ export default function App() {
     window.setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 3500);
   };
 
+  const logActivity = (
+    summary: string,
+    action: 'create' | 'update' | 'delete' | 'renew' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card',
+    entityType: 'family' | 'user' | 'settings' | 'course' | 'export' | 'import' | 'card' = 'family',
+    entityId?: string,
+    entityLabel?: string
+  ) => {
+    if (!currentUser) return;
+    setActivity(addActivity(currentUser, { summary, action, entityType, entityId, entityLabel }));
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return families.filter((f) => {
-      const guardian = f.guardians[0];
-      const students = f.students.map((s) => `${s.firstName} ${s.lastName}`).join(' ');
-      const searchable = [f.membershipNumber, f.familyName, guardian?.fullName, guardian?.phone, guardian?.email, students]
+      const guardians = f.guardians.map((g) => [g.fullName, g.dni, g.phone, g.email].filter(Boolean).join(' ')).join(' ');
+      const students = f.students.map((s) => [s.firstName, s.lastName, s.dni].filter(Boolean).join(' ')).join(' ');
+      const searchable = [f.membershipNumber, f.familyName, guardians, students]
         .filter(Boolean).join(' ').toLowerCase();
       const matchesQ = !q || searchable.includes(q);
       const matchesStatus = status === 'all' || (status === 'active' ? f.isActiveThisYear : !f.isActiveThisYear);
@@ -252,9 +268,17 @@ export default function App() {
         : editing.activeYears,
     };
 
+    const existed = families.some((f) => f.id === ready.id);
     const updated = saveFamily(ready);
     setFamilies(updated);
     setEditing(null);
+    logActivity(
+      `${existed ? 'Ficha modificada' : 'Familia dada de alta'}: ${ready.familyName}`,
+      existed ? 'update' : 'create',
+      'family',
+      ready.id,
+      ready.familyName
+    );
     toast('success', 'Ficha familiar guardada', `${guardians.length} adulto(s) y ${students.length} hijo(s)/a(s) registrados.`);
   };
 
@@ -264,6 +288,13 @@ export default function App() {
     const fam = updated.find((f) => f.id === id);
     if (fam) {
       setSelected(fam);
+      logActivity(
+        fam.isActiveThisYear ? `Renovación registrada para ${fam.familyName}` : `Renovación retirada para ${fam.familyName}`,
+        fam.isActiveThisYear ? 'renew' : 'deactivate',
+        'family',
+        fam.id,
+        fam.familyName
+      );
       toast('info', fam.isActiveThisYear ? 'Renovación registrada' : 'Familia marcada como no renovada');
     }
   };
@@ -277,12 +308,23 @@ export default function App() {
     a.download = `ampa_familias_${settings.activeAcademicYear.replace('/', '-')}.csv`;
     a.click();
     URL.revokeObjectURL(href);
+    logActivity(`Listado CSV exportado: ${filtered.length} familias`, 'export', 'export');
     toast('success', 'Listado exportado', `${filtered.length} familias incluidas.`);
   };
 
   const updateSettings = (next: SystemSettings) => {
     setSettings(saveSystemSettings(next));
+    logActivity(`Ajustes actualizados. Curso activo: ${next.activeAcademicYear}`, 'settings', 'settings');
     toast('success', 'Ajustes guardados');
+  };
+
+  const handleAdvanceYear = (newYear: string) => {
+    if (!currentUser || !window.confirm(`Abrir el curso ${newYear}? Las familias quedarán pendientes de renovación y se conservará el histórico.`)) return;
+    const result = advanceAcademicYear(newYear, false);
+    setSettings(result.settings);
+    setFamilies(result.families);
+    logActivity(`Curso académico abierto: ${newYear}`, 'settings', 'course');
+    toast('success', 'Nuevo curso abierto', `Curso ${newYear} preparado para renovaciones.`);
   };
 
   return (
@@ -307,10 +349,11 @@ export default function App() {
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[210px_1fr]">
         <aside className="lg:sticky lg:top-24 lg:self-start">
-          <nav className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+          <nav className="grid grid-cols-4 gap-2 lg:grid-cols-1">
             {[
               ['dashboard', 'Panel', LayoutDashboard],
               ['families', 'Directorio', Users],
+              ['courses', 'Cursos', GraduationCap],
               ['settings', 'Ajustes', Settings],
             ].map(([id, label, Icon]: any) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold lg:justify-start ${tab === id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
@@ -349,6 +392,25 @@ export default function App() {
                     <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
                   </div>
                 ))}
+              </section>
+
+              <section className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3 text-sm font-extrabold">Distribución por etapas</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(families.flatMap((f)=>f.students).reduce((acc: Record<string,number>, s) => {
+                      const stage = calculateStudentCourse(s, settings.activeAcademicYear).stageName;
+                      acc[stage] = (acc[stage] || 0) + 1;
+                      return acc;
+                    }, {})).map(([stage,count]) => <div key={stage} className="rounded-xl bg-slate-50 p-3"><div className="text-[11px] text-slate-500">{stage}</div><div className="mt-1 text-xl font-black">{count}</div></div>)}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3 text-sm font-extrabold">Altas recientes</div>
+                  <div className="space-y-2">
+                    {[...families].sort((a,b)=>b.registrationDate.localeCompare(a.registrationDate)).slice(0,4).map((f)=><button key={f.id} onClick={()=>setSelected(f)} className="flex w-full justify-between rounded-xl bg-slate-50 p-3 text-left"><span className="text-xs font-bold">Familia {f.familyName}</span><span className="text-[10px] text-slate-400">{new Date(f.registrationDate).toLocaleDateString('es-ES')}</span></button>)}
+                  </div>
+                </div>
               </section>
 
               <section className="rounded-2xl border border-slate-200 bg-white">
@@ -415,6 +477,10 @@ export default function App() {
             </div>
           )}
 
+          {tab === 'courses' && (
+            <CoursesView families={families} settings={settings} canEdit={canEdit} onAdvanceYear={handleAdvanceYear} />
+          )}
+
           {tab === 'settings' && (
             <div className="space-y-5">
               <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Configuración</p><h1 className="text-2xl font-black">Ajustes del AMPA</h1></div>
@@ -436,35 +502,29 @@ export default function App() {
                 <div className="mb-2 flex items-center gap-2 font-extrabold"><AlertTriangle size={18}/> Pendiente antes de producción</div>
                 <p className="text-xs leading-6">Esta primera versión online conserva almacenamiento en el navegador. No introduzca datos personales reales. La siguiente fase sustituirá esta capa por autenticación de servidor, base de datos central, permisos y registro de actividad.</p>
               </section>
+              <AdminTools
+                families={families}
+                settings={settings}
+                currentUser={currentUser}
+                onFamiliesReload={() => setFamilies(getFamilies())}
+                onNotify={toast}
+                onActivity={(summary, action, entityType) => logActivity(summary, action, entityType)}
+              />
             </div>
           )}
         </main>
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white/95 p-5 backdrop-blur">
-              <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{selected.membershipNumber}</div><h2 className="text-xl font-black">Familia {selected.familyName}</h2></div>
-              <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar ficha" className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
-            </div>
-            <div className="space-y-5 p-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl bg-slate-50 p-4"><div className="text-[10px] font-black uppercase text-slate-400">Estado curso actual</div><div className={`mt-2 font-extrabold ${selected.isActiveThisYear ? 'text-emerald-700' : 'text-amber-700'}`}>{selected.isActiveThisYear ? 'Familia activa' : 'Pendiente de renovación'}</div></div>
-                <div className="rounded-2xl bg-slate-50 p-4"><div className="text-[10px] font-black uppercase text-slate-400">Historial</div><div className="mt-2 text-sm font-bold">{selected.activeYears.join(' · ') || 'Sin histórico'}</div></div>
-              </div>
-
-              <section><h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Tutores</h3><div className="space-y-2">{selected.guardians.map((g) => <div key={g.id} className="rounded-xl border border-slate-200 p-3"><div className="font-bold">{g.fullName}</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">{g.phone && <span className="flex items-center gap-1"><Phone size={12}/>{g.phone}</span>}{g.email && <span className="flex items-center gap-1"><Mail size={12}/>{g.email}</span>}</div></div>)}</div></section>
-              <section><h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Alumnos</h3><div className="space-y-2">{selected.students.map((s) => { const c=calculateStudentCourse(s,settings.activeAcademicYear); return <div key={s.id} className="rounded-xl border border-slate-200 p-3"><div className="font-bold">{s.firstName} {s.lastName}</div><div className="mt-1 text-xs text-slate-500">{c.fullDisplay}{s.allergies ? ` · Alergias: ${s.allergies}` : ''}</div></div>; })}</div></section>
-              <section className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600"><span className="flex items-center gap-1 font-bold text-slate-700"><MapPin size={13}/>{selected.address.street || 'Sin dirección'}</span><span>{selected.address.city} {selected.address.postalCode}</span></section>
-
-              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-                {canEdit && <button type="button" onClick={() => { setEditing(hydrateFamilyForEditing(selected)); setSelected(null); }} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar</button>}
-                {canEdit && <button type="button" onClick={() => toggleActive(selected.id)} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{selected.isActiveThisYear ? 'Marcar no renovada' : 'Registrar renovación'}</button>}
-              </div>
-            </div>
-          </div>
-        </div>
+        <FamilyDetail
+          family={selected}
+          settings={settings}
+          activity={activity}
+          canEdit={canEdit}
+          onClose={() => setSelected(null)}
+          onEdit={() => { setEditing(hydrateFamilyForEditing(selected)); setSelected(null); }}
+          onToggleRenewal={() => toggleActive(selected.id)}
+        />
       )}
 
       {editing && (
