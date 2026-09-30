@@ -1,0 +1,333 @@
+import React, { useMemo, useState } from 'react';
+import {
+  LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
+  UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
+  AlertTriangle, MapPin, Phone, Mail
+} from 'lucide-react';
+import { AppUser, Family, MainViewTab, SystemSettings } from './types/family';
+import {
+  getFamilies, saveFamily, toggleFamilyActive, getNextMembershipNumber,
+  getSystemSettings, saveSystemSettings, exportToCSV
+} from './services/db';
+import { getCurrentUser, logout } from './services/authService';
+import { calculateStudentCourse } from './utils/academicCourse';
+import { LoginScreen } from './components/LoginScreen';
+import { AmpaLogo } from './components/AmpaLogo';
+import { NotificationToast, ToastMessage } from './components/NotificationToast';
+
+const emptyFamily = (membershipNumber: string): Family => ({
+  id: `fam-${Date.now()}`,
+  membershipNumber,
+  familyName: '',
+  isActiveThisYear: true,
+  activeYears: [],
+  guardians: [{
+    id: `g-${Date.now()}`,
+    fullName: '',
+    relationship: 'madre',
+    dni: '',
+    phone: '',
+    email: '',
+    isMainContact: true,
+  }],
+  students: [],
+  address: { street: '', city: 'Granada', postalCode: '' },
+  notes: '',
+  registrationDate: new Date().toISOString().slice(0, 10),
+  updatedAt: new Date().toISOString(),
+});
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(getCurrentUser());
+  const [families, setFamilies] = useState<Family[]>(getFamilies());
+  const [settings, setSettings] = useState<SystemSettings>(getSystemSettings());
+  const [tab, setTab] = useState<MainViewTab>('dashboard');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [selected, setSelected] = useState<Family | null>(null);
+  const [editing, setEditing] = useState<Family | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  const canEdit = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+
+  const toast = (type: ToastMessage['type'], title: string, message?: string) => {
+    const id = crypto.randomUUID();
+    setToasts((p) => [...p, { id, type, title, message }]);
+    window.setTimeout(() => setToasts((p) => p.filter((t) => t.id !== id)), 3500);
+  };
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return families.filter((f) => {
+      const guardian = f.guardians[0];
+      const students = f.students.map((s) => `${s.firstName} ${s.lastName}`).join(' ');
+      const searchable = [f.membershipNumber, f.familyName, guardian?.fullName, guardian?.phone, guardian?.email, students]
+        .filter(Boolean).join(' ').toLowerCase();
+      const matchesQ = !q || searchable.includes(q);
+      const matchesStatus = status === 'all' || (status === 'active' ? f.isActiveThisYear : !f.isActiveThisYear);
+      return matchesQ && matchesStatus;
+    });
+  }, [families, query, status]);
+
+  const activeCount = families.filter((f) => f.isActiveThisYear).length;
+  const studentCount = families.reduce((n, f) => n + f.students.length, 0);
+  const pendingCount = families.length - activeCount;
+
+  if (!currentUser) {
+    return <LoginScreen onLoginSuccess={(u) => { setCurrentUser(u); toast('success', 'Sesión iniciada', `Bienvenido/a, ${u.name}`); }} />;
+  }
+
+  const handleLogout = () => {
+    logout();
+    setCurrentUser(null);
+  };
+
+  const saveEdited = () => {
+    if (!editing || !editing.familyName.trim()) {
+      toast('error', 'Faltan datos', 'Indique al menos el nombre de la familia.');
+      return;
+    }
+    if (!editing.activeYears.includes(settings.activeAcademicYear) && editing.isActiveThisYear) {
+      editing.activeYears = [...editing.activeYears, settings.activeAcademicYear];
+    }
+    setFamilies(saveFamily(editing));
+    setEditing(null);
+    toast('success', 'Ficha guardada', `Familia ${editing.familyName} actualizada.`);
+  };
+
+  const toggleActive = (id: string) => {
+    const updated = toggleFamilyActive(id, settings.activeAcademicYear);
+    setFamilies(updated);
+    const fam = updated.find((f) => f.id === id);
+    if (fam) {
+      setSelected(fam);
+      toast('info', fam.isActiveThisYear ? 'Renovación registrada' : 'Familia marcada como no renovada');
+    }
+  };
+
+  const downloadCSV = () => {
+    const csv = exportToCSV(filtered, settings.activeAcademicYear);
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = `ampa_familias_${settings.activeAcademicYear.replace('/', '-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(href);
+    toast('success', 'Listado exportado', `${filtered.length} familias incluidas.`);
+  };
+
+  const updateSettings = (next: SystemSettings) => {
+    setSettings(saveSystemSettings(next));
+    toast('success', 'Ajustes guardados');
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+          <AmpaLogo className="h-11 w-auto max-w-[210px]" />
+          <div className="hidden h-8 w-px bg-slate-200 sm:block" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-extrabold">Gestión de Familias</div>
+            <div className="text-[11px] text-slate-500">Curso {settings.activeAcademicYear} · entorno de demostración</div>
+          </div>
+          <div className="hidden text-right md:block">
+            <div className="text-xs font-bold">{currentUser.name}</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-400">{currentUser.role}</div>
+          </div>
+          <button type="button" onClick={handleLogout} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50">
+            <LogOut size={16}/><span className="hidden sm:inline">Salir</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[210px_1fr]">
+        <aside className="lg:sticky lg:top-24 lg:self-start">
+          <nav className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+            {[
+              ['dashboard', 'Panel', LayoutDashboard],
+              ['families', 'Directorio', Users],
+              ['settings', 'Ajustes', Settings],
+            ].map(([id, label, Icon]: any) => (
+              <button key={id} type="button" onClick={() => setTab(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold lg:justify-start ${tab === id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                <Icon size={17}/><span>{label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="mt-4 hidden rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-900 lg:block">
+            <div className="mb-1 flex items-center gap-2 font-bold"><AlertTriangle size={14}/> Prototipo online</div>
+            Utilice únicamente datos ficticios hasta activar backend, base de datos y autenticación segura.
+          </div>
+        </aside>
+
+        <main className="min-w-0">
+          {tab === 'dashboard' && (
+            <div className="space-y-6">
+              <section className="flex flex-col justify-between gap-4 rounded-3xl bg-slate-900 p-6 text-white sm:flex-row sm:items-center">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Resumen operativo</p>
+                  <h1 className="mt-2 text-2xl font-black">AMPA Agustinos Granada</h1>
+                  <p className="mt-1 max-w-2xl text-sm text-slate-300">Consulta el estado del censo, controla renovaciones y accede rápidamente a las tareas habituales.</p>
+                </div>
+                {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(getNextMembershipNumber()))} className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold hover:bg-rose-500"><Plus size={18}/> Nueva familia</button>}
+              </section>
+
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ['Familias', families.length, Users, 'Censo total'],
+                  ['Activas', activeCount, CheckCircle2, 'Renovadas este curso'],
+                  ['Pendientes', pendingCount, Clock3, 'Sin renovación'],
+                  ['Alumnos', studentCount, GraduationCap, 'Hijos registrados'],
+                ].map(([label, value, Icon, hint]: any) => (
+                  <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-4 flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{label}</span><Icon size={18} className="text-slate-400"/></div>
+                    <div className="text-3xl font-black tracking-tight">{value}</div>
+                    <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
+                  </div>
+                ))}
+              </section>
+
+              <section className="rounded-2xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-100 p-4">
+                  <div><h2 className="text-sm font-extrabold">Pendientes de renovación</h2><p className="text-xs text-slate-500">Familias no activas en {settings.activeAcademicYear}</p></div>
+                  <button type="button" onClick={() => { setStatus('inactive'); setTab('families'); }} className="text-xs font-bold text-rose-600">Ver todas</button>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {families.filter((f) => !f.isActiveThisYear).slice(0,5).map((f) => (
+                    <button key={f.id} type="button" onClick={() => setSelected(f)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-slate-50">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 font-bold text-slate-500">{f.familyName.charAt(0)}</div>
+                      <div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">Familia {f.familyName}</div><div className="text-[11px] text-slate-400">{f.membershipNumber}</div></div>
+                      <ChevronRight size={17} className="text-slate-300"/>
+                    </button>
+                  ))}
+                  {pendingCount === 0 && <div className="p-8 text-center text-sm text-slate-400">Todas las familias están renovadas.</div>}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {tab === 'families' && (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Directorio</p><h1 className="text-2xl font-black">Familias asociadas</h1></div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={downloadCSV} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> Exportar CSV</button>
+                  {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(getNextMembershipNumber()))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
+                </div>
+              </div>
+
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_auto]">
+                <label className="relative">
+                  <Search size={17} className="absolute left-3 top-3.5 text-slate-400"/>
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar familia, alumno, teléfono, email o nº de socio…" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:border-rose-400 focus:bg-white"/>
+                </label>
+                <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                  {([['all','Todas'],['active','Activas'],['inactive','Pendientes']] as const).map(([id,label]) => (
+                    <button key={id} type="button" onClick={() => setStatus(id)} className={`min-h-9 rounded-lg px-3 text-xs font-bold ${status === id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="hidden grid-cols-[110px_1.3fr_1fr_110px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 md:grid">
+                  <span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {filtered.map((f) => {
+                    const g = f.guardians.find((x) => x.isMainContact) || f.guardians[0];
+                    return (
+                      <button key={f.id} type="button" onClick={() => setSelected(f)} className="grid w-full gap-2 p-4 text-left hover:bg-slate-50 md:grid-cols-[110px_1.3fr_1fr_110px_40px] md:items-center md:gap-3">
+                        <span className="font-mono text-xs font-bold text-slate-500">{f.membershipNumber}</span>
+                        <span><span className="block text-sm font-extrabold">Familia {f.familyName}</span><span className="text-[11px] text-slate-400">{f.students.length} alumno{f.students.length === 1 ? '' : 's'}</span></span>
+                        <span className="text-xs text-slate-500">{g?.fullName || 'Sin contacto'}<span className="block text-[11px] text-slate-400">{g?.phone}</span></span>
+                        <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${f.isActiveThisYear ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{f.isActiveThisYear ? 'Activa' : 'Pendiente'}</span>
+                        <ChevronRight size={17} className="hidden text-slate-300 md:block"/>
+                      </button>
+                    );
+                  })}
+                  {filtered.length === 0 && <div className="p-12 text-center text-sm text-slate-400">No hay familias que coincidan con la búsqueda.</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'settings' && (
+            <div className="space-y-5">
+              <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Configuración</p><h1 className="text-2xl font-black">Ajustes del AMPA</h1></div>
+              <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="mb-5 flex items-center gap-3"><div className="rounded-xl bg-slate-100 p-2"><Settings size={18}/></div><div><h2 className="text-sm font-extrabold">Datos generales</h2><p className="text-xs text-slate-500">Configuración local de esta instalación.</p></div></div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[
+                    ['associationName','Asociación'],
+                    ['schoolName','Centro educativo'],
+                    ['activeAcademicYear','Curso académico'],
+                    ['contactEmail','Correo de contacto'],
+                  ].map(([key,label]) => (
+                    <label key={key} className="space-y-1.5"><span className="text-xs font-bold text-slate-600">{label}</span><input disabled={!canEdit} value={(settings as any)[key]} onChange={(e) => setSettings({...settings,[key]:e.target.value})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm disabled:bg-slate-50"/></label>
+                  ))}
+                </div>
+                {canEdit && <button type="button" onClick={() => updateSettings(settings)} className="mt-5 flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><Save size={16}/> Guardar ajustes</button>}
+              </section>
+              <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+                <div className="mb-2 flex items-center gap-2 font-extrabold"><AlertTriangle size={18}/> Pendiente antes de producción</div>
+                <p className="text-xs leading-6">Esta primera versión online conserva almacenamiento en el navegador. No introduzca datos personales reales. La siguiente fase sustituirá esta capa por autenticación de servidor, base de datos central, permisos y registro de actividad.</p>
+              </section>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white/95 p-5 backdrop-blur">
+              <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{selected.membershipNumber}</div><h2 className="text-xl font-black">Familia {selected.familyName}</h2></div>
+              <button type="button" onClick={() => setSelected(null)} aria-label="Cerrar ficha" className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
+            </div>
+            <div className="space-y-5 p-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-slate-50 p-4"><div className="text-[10px] font-black uppercase text-slate-400">Estado curso actual</div><div className={`mt-2 font-extrabold ${selected.isActiveThisYear ? 'text-emerald-700' : 'text-amber-700'}`}>{selected.isActiveThisYear ? 'Familia activa' : 'Pendiente de renovación'}</div></div>
+                <div className="rounded-2xl bg-slate-50 p-4"><div className="text-[10px] font-black uppercase text-slate-400">Historial</div><div className="mt-2 text-sm font-bold">{selected.activeYears.join(' · ') || 'Sin histórico'}</div></div>
+              </div>
+
+              <section><h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Tutores</h3><div className="space-y-2">{selected.guardians.map((g) => <div key={g.id} className="rounded-xl border border-slate-200 p-3"><div className="font-bold">{g.fullName}</div><div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">{g.phone && <span className="flex items-center gap-1"><Phone size={12}/>{g.phone}</span>}{g.email && <span className="flex items-center gap-1"><Mail size={12}/>{g.email}</span>}</div></div>)}</div></section>
+              <section><h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Alumnos</h3><div className="space-y-2">{selected.students.map((s) => { const c=calculateStudentCourse(s,settings.activeAcademicYear); return <div key={s.id} className="rounded-xl border border-slate-200 p-3"><div className="font-bold">{s.firstName} {s.lastName}</div><div className="mt-1 text-xs text-slate-500">{c.fullDisplay}{s.allergies ? ` · Alergias: ${s.allergies}` : ''}</div></div>; })}</div></section>
+              <section className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600"><span className="flex items-center gap-1 font-bold text-slate-700"><MapPin size={13}/>{selected.address.street || 'Sin dirección'}</span><span>{selected.address.city} {selected.address.postalCode}</span></section>
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
+                {canEdit && <button type="button" onClick={() => { setEditing(structuredClone(selected)); setSelected(null); }} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar</button>}
+                {canEdit && <button type="button" onClick={() => toggleActive(selected.id)} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{selected.isActiveThisYear ? 'Marcar no renovada' : 'Registrar renovación'}</button>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4">
+          <div className="max-h-[94vh] w-full max-w-xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white p-5">
+              <div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{editing.membershipNumber}</div><h2 className="text-lg font-black">{families.some((f)=>f.id===editing.id) ? 'Editar familia' : 'Nueva familia'}</h2></div>
+              <button type="button" onClick={() => setEditing(null)} className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
+            </div>
+            <div className="space-y-4 p-5">
+              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Nombre de familia</span><input value={editing.familyName} onChange={(e)=>setEditing({...editing,familyName:e.target.value})} placeholder="Ej. García López" className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Tutor principal</span><input value={editing.guardians[0]?.fullName || ''} onChange={(e)=>setEditing({...editing,guardians:[{...(editing.guardians[0] || {id:`g-${Date.now()}`,relationship:'madre',dni:'',phone:'',email:'',isMainContact:true}),fullName:e.target.value},...editing.guardians.slice(1)]})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+                <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Teléfono</span><input value={editing.guardians[0]?.phone || ''} onChange={(e)=>setEditing({...editing,guardians:[{...(editing.guardians[0] || {id:`g-${Date.now()}`,fullName:'',relationship:'madre',dni:'',email:'',isMainContact:true}),phone:e.target.value},...editing.guardians.slice(1)]})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+              </div>
+              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Correo</span><input type="email" value={editing.guardians[0]?.email || ''} onChange={(e)=>setEditing({...editing,guardians:[{...(editing.guardians[0] || {id:`g-${Date.now()}`,fullName:'',relationship:'madre',dni:'',phone:'',isMainContact:true}),email:e.target.value},...editing.guardians.slice(1)]})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Dirección</span><input value={editing.address.street} onChange={(e)=>setEditing({...editing,address:{...editing.address,street:e.target.value}})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
+              <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Observaciones</span><textarea value={editing.notes || ''} onChange={(e)=>setEditing({...editing,notes:e.target.value})} rows={3} className="w-full rounded-xl border border-slate-200 p-3 text-sm"/></label>
+              <label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={editing.isActiveThisYear} onChange={(e)=>setEditing({...editing,isActiveThisYear:e.target.checked})}/><span className="text-xs font-bold">Activa en {settings.activeAcademicYear}</span></label>
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={()=>setEditing(null)} className="min-h-11 rounded-xl px-4 text-xs font-bold text-slate-500">Cancelar</button><button type="button" onClick={saveEdited} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 text-xs font-bold text-white"><Save size={15}/> Guardar ficha</button></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <NotificationToast toasts={toasts} onDismiss={(id) => setToasts((p) => p.filter((t) => t.id !== id))}/>
+    </div>
+  );
+}
