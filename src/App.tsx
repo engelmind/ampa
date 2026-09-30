@@ -5,7 +5,7 @@ import {
   AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby
 } from 'lucide-react';
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
-import { exportToCSV } from './services/db';
+import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
 import { calculateStudentCourse } from './utils/academicCourse';
 import { LoginScreen } from './components/LoginScreen';
