@@ -574,9 +574,8 @@ export default function App() {
                 families={families}
                 settings={settings}
                 currentUser={currentUser}
-                onFamiliesReload={() => setFamilies(getFamilies())}
+                onFamiliesReload={() => loadWorkspace()}
                 onNotify={toast}
-                onActivity={(summary, action, entityType) => logActivity(summary, action, entityType)}
               />
             </div>
           )}
