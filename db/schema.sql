@@ -133,3 +133,16 @@ create index if not exists backup_snapshots_created_by_idx on ampa_private.backu
 
 revoke all on schema ampa_private from public, anon, authenticated;
 revoke all on all tables in schema ampa_private from public, anon, authenticated;
+
+
+-- Configuración privada del proveedor de correo
+create table if not exists ampa_private.email_config (
+  singleton boolean primary key default true check (singleton),
+  from_email text,
+  sender_name text not null default 'AMPA Agustinos Granada',
+  updated_at timestamptz not null default now()
+);
+revoke all on ampa_private.email_config from public, anon, authenticated;
+
+-- La clave del proveedor no se guarda en esta tabla: se almacena en Supabase Vault
+-- con el nombre ampa_resend_api_key.
