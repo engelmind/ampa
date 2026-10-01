@@ -37,12 +37,13 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [mailReady,setMailReady]=useState<boolean|null>(null);
+  const [domainVerified,setDomainVerified]=useState<boolean|null>(null);
   const [sender,setSender]=useState('');
 
   useEffect(()=>{
     let alive=true;
     backendApi.emailStatus()
-      .then((status)=>{if(alive){setMailReady(status.configured);setSender(status.fromEmail || '');}})
+      .then((status)=>{if(alive){setMailReady(status.configured);setDomainVerified(status.domainVerified ?? null);setSender(status.fromEmail || '');}})
       .catch(()=>{if(alive)setMailReady(false);});
     return()=>{alive=false;};
   },[]);
@@ -81,7 +82,7 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
           <button onClick={onClose} className="rounded-xl p-2 hover:bg-slate-100"><X size={19}/></button>
         </div>
         <div className="space-y-4 p-5">
-          {mailReady===false && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Correo pendiente de configurar.</strong><div className="mt-1 text-xs leading-5">El carnet puede previsualizarse y descargarse, pero el envío directo se activará cuando quede conectado el proveedor de correo del AMPA.</div></div>}
+          {mailReady===false && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>{domainVerified===false ? 'Dominio de correo pendiente de verificar.' : 'Correo pendiente de configurar.'}</strong><div className="mt-1 text-xs leading-5">{domainVerified===false ? 'El remitente ya está configurado, pero Resend necesita verificar los registros DNS de agustinosgranada.es antes de permitir envíos.' : 'El carnet puede previsualizarse y descargarse, pero el envío directo se activará cuando quede conectado el proveedor de correo del AMPA.'}</div></div>}
           {!recipients.length ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No hay ningún padre, madre o tutor con email registrado en esta familia.</div>
           ) : (
