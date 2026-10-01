@@ -8,7 +8,7 @@ import { PdfPreviewModal } from './PdfPreviewModal';
 import { EmailCardModal } from './EmailCardModal';
 import { getFamilyDataIssues } from '../utils/dataQuality';
 
-type Section = 'family' | 'students' | 'history' | 'privacy';
+type Section = 'family' | 'history' | 'privacy';
 
 interface Props {
   family: Family;
@@ -46,8 +46,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
   };
 
   const sections: Array<[Section, string, React.ComponentType<{ size?: number }>]> = [
-    ['family', 'Familia', UserRound],
-    ['students', 'Alumnos', GraduationCap],
+    ['family', 'Unidad familiar', UserRound],
     ['history', 'Historial', History],
     ['privacy', 'Privacidad', ShieldCheck],
   ];
@@ -57,7 +56,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
       {cardArtifact && <PdfPreviewModal artifact={cardArtifact} onClose={()=>setCardArtifact(null)} onEmail={canEdit ? ()=>setShowEmail(true) : undefined} emailLabel="Enviar carnet"/>}
       {cardArtifact && showEmail && <EmailCardModal family={family} artifact={cardArtifact} academicYear={settings.activeAcademicYear} onClose={()=>setShowEmail(false)} onSent={(recipient)=>onNotify?.('success','Carnet enviado',recipient)}/>}
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4">
-      <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+      <div className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
         <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 backdrop-blur">
           <div className="flex items-center justify-between p-5">
             <div>
@@ -96,66 +95,93 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
                 </div>
               </div>
 
-              {issues.length>0 && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="text-xs font-black uppercase tracking-wider text-amber-700">Datos que conviene completar</div><div className="mt-2 flex flex-wrap gap-2">{issues.map((i)=><span key={i.code} className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-amber-800">{i.label}</span>)}</div></section>}
+              {issues.length>0 && (
+                <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="text-xs font-black uppercase tracking-wider text-amber-700">Datos que conviene completar</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {issues.map((i)=><span key={i.code} className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-amber-800">{i.label}</span>)}
+                  </div>
+                </section>
+              )}
 
-              <section>
-                <h3 className="mb-2 text-xs font-black uppercase tracking-wider text-slate-400">Padres, madres y tutores</h3>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {family.guardians.map((g) => (
-                    <div key={g.id} className="rounded-2xl border border-slate-200 p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-extrabold">{g.fullName}</div>
-                          <div className="mt-1 text-[11px] uppercase font-bold text-slate-400">{g.relationship.replace('_',' ')}</div>
+              <div className="grid gap-5 lg:grid-cols-2">
+                <section>
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Padres, madres y tutores</h3>
+                    <span className="text-[10px] font-bold text-slate-400">{family.guardians.length} adulto(s)</span>
+                  </div>
+                  <div className="space-y-3">
+                    {family.guardians.map((g) => (
+                      <div key={g.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-extrabold">{g.fullName}</div>
+                            <div className="mt-1 text-[11px] font-bold uppercase text-slate-400">{g.relationship.replace('_',' ')}</div>
+                          </div>
+                          {g.isMainContact && <span className="shrink-0 rounded-full bg-rose-50 px-2 py-1 text-[10px] font-black text-rose-700">Contacto principal</span>}
                         </div>
-                        {g.isMainContact && <span className="rounded-full bg-rose-50 px-2 py-1 text-[10px] font-black text-rose-700">Contacto principal</span>}
+                        <div className="mt-3 grid gap-1.5 text-xs text-slate-600 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                          {g.dni && <div>DNI/NIE: <strong>{g.dni}</strong></div>}
+                          {g.birthDateDDMMAAAA && <div className="flex items-center gap-1"><CalendarDays size={13}/>{parseDDMMAAAA(g.birthDateDDMMAAAA).formattedDisplay}</div>}
+                          {g.phone && <div className="flex items-center gap-1"><Phone size={13}/><span className="truncate">{g.phone}</span></div>}
+                          {g.email && <div className="flex min-w-0 items-center gap-1"><Mail size={13}/><span className="truncate">{g.email}</span></div>}
+                        </div>
                       </div>
-                      <div className="mt-3 space-y-1.5 text-xs text-slate-600">
-                        {g.dni && <div>DNI/NIE: <strong>{g.dni}</strong></div>}
-                        {g.birthDateDDMMAAAA && <div className="flex items-center gap-1"><CalendarDays size={13}/>{parseDDMMAAAA(g.birthDateDDMMAAAA).formattedDisplay}</div>}
-                        {g.phone && <div className="flex items-center gap-1"><Phone size={13}/>{g.phone}</div>}
-                        {g.email && <div className="flex items-center gap-1"><Mail size={13}/>{g.email}</div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
+                    ))}
+                    {!family.guardians.length && <div className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">No hay adultos responsables registrados.</div>}
+                  </div>
+                </section>
+
+                <section>
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">Hijos e hijas</h3>
+                    <span className="text-[10px] font-bold text-slate-400">{family.students.length} alumno(s)</span>
+                  </div>
+                  <div className="space-y-3">
+                    {family.students.map((s) => {
+                      const course = calculateStudentCourse(s, settings.activeAcademicYear);
+                      return (
+                        <div key={s.id} className="rounded-2xl border border-slate-200 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate font-extrabold">{s.firstName} {s.lastName}</div>
+                              <div className="mt-1 text-xs font-bold text-rose-600">{course.fullDisplay}</div>
+                            </div>
+                            <div className="shrink-0 rounded-xl bg-slate-50 px-2.5 py-1.5 text-[10px] font-semibold text-slate-500">
+                              {s.birthDateDDMMAAAA ? parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay : s.birthYear}
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-1.5 text-xs text-slate-600 sm:grid-cols-2">
+                            {s.dni && <div>DNI/NIE: <strong>{s.dni}</strong></div>}
+                            <div>Etapa: <strong>{course.stageName}</strong></div>
+                            {s.groupLetter && <div>Grupo: <strong>{s.groupLetter}</strong></div>}
+                            {s.school && <div>Centro: <strong>{s.school}</strong></div>}
+                            {s.className && <div>Clase: <strong>{s.className}</strong></div>}
+                          </div>
+                          {(s.allergies || s.specialNeeds) && (
+                            <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+                              {s.allergies && <div className="rounded-xl bg-amber-50 p-2 text-[11px] text-amber-900"><strong>Alergias/intolerancias:</strong> {s.allergies}</div>}
+                              {s.specialNeeds && <div className="rounded-xl bg-sky-50 p-2 text-[11px] text-sky-900"><strong>Necesidades:</strong> {s.specialNeeds}</div>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {!family.students.length && <div className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">No hay alumnos/as registrados.</div>}
+                  </div>
+                </section>
+              </div>
 
               <section className="rounded-2xl bg-slate-50 p-4 text-sm">
-                <div className="flex items-start gap-2"><MapPin size={16} className="mt-0.5 text-slate-400"/><div><div className="font-bold">{family.address.street || 'Sin dirección'}</div><div className="text-xs text-slate-500">{family.address.postalCode} {family.address.city}</div></div></div>
+                <div className="flex items-start gap-2">
+                  <MapPin size={16} className="mt-0.5 text-slate-400"/>
+                  <div>
+                    <div className="font-bold">{family.address.street || 'Sin dirección'}</div>
+                    <div className="text-xs text-slate-500">{family.address.postalCode} {family.address.city}</div>
+                  </div>
+                </div>
                 {family.notes && <div className="mt-3 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-600">{family.notes}</div>}
               </section>
-            </div>
-          )}
-
-          {section === 'students' && (
-            <div className="space-y-3">
-              {family.students.map((s) => {
-                const course = calculateStudentCourse(s, settings.activeAcademicYear);
-                return (
-                  <div key={s.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <div className="text-base font-extrabold">{s.firstName} {s.lastName}</div>
-                        <div className="mt-1 text-xs font-bold text-rose-600">{course.fullDisplay}</div>
-                      </div>
-                      <div className="rounded-xl bg-slate-50 px-3 py-2 text-right text-xs text-slate-500">
-                        {s.birthDateDDMMAAAA ? parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay : s.birthYear}
-                      </div>
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
-                      {s.dni && <div>DNI/NIE: <strong>{s.dni}</strong></div>}
-                      <div>Etapa: <strong>{course.stageName}</strong></div>
-                      {s.groupLetter && <div>Grupo: <strong>{s.groupLetter}</strong></div>}
-                      {s.school && <div>Centro: <strong>{s.school}</strong></div>}
-                      {s.className && <div>Clase: <strong>{s.className}</strong></div>}
-                      {s.allergies && <div className="sm:col-span-2 rounded-xl bg-amber-50 p-2 text-amber-900"><strong>Alergias/intolerancias:</strong> {s.allergies}</div>}
-                      {s.specialNeeds && <div className="sm:col-span-2 rounded-xl bg-sky-50 p-2 text-sky-900"><strong>Necesidades:</strong> {s.specialNeeds}</div>}
-                    </div>
-                  </div>
-                );
-              })}
-              {family.students.length === 0 && <div className="rounded-2xl border-2 border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">No hay alumnos/as registrados.</div>}
             </div>
           )}
 
