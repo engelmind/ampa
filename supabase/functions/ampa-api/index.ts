@@ -259,6 +259,7 @@ async function getEmailProviderConfig() {
   let apiKey = Deno.env.get('RESEND_API_KEY') || '';
   let fromEmail = Deno.env.get('AMPA_MAIL_FROM') || '';
   let senderName = Deno.env.get('AMPA_MAIL_NAME') || 'AMPA Agustinos Granada';
+  let domainVerified = false;
 
   if (!apiKey) {
     try {
@@ -266,14 +267,20 @@ async function getEmailProviderConfig() {
       apiKey = secretRows[0]?.decrypted_secret || '';
     } catch {}
   }
-  if (!fromEmail) {
-    try {
-      const cfg = await sql`select from_email, sender_name from ampa_private.email_config where singleton=true limit 1`;
-      fromEmail = cfg[0]?.from_email || '';
-      senderName = cfg[0]?.sender_name || senderName;
-    } catch {}
-  }
-  return { apiKey, fromEmail, senderName, configured: Boolean(apiKey && fromEmail) };
+  try {
+    const cfg = await sql`select from_email, sender_name, domain_verified from ampa_private.email_config where singleton=true limit 1`;
+    if (!fromEmail) fromEmail = cfg[0]?.from_email || '';
+    senderName = cfg[0]?.sender_name || senderName;
+    domainVerified = cfg[0]?.domain_verified === true;
+  } catch {}
+
+  return {
+    apiKey,
+    fromEmail,
+    senderName,
+    domainVerified,
+    configured: Boolean(apiKey && fromEmail && domainVerified),
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -471,7 +478,12 @@ Deno.serve(async (req: Request) => {
     if (path === '/email/status' && req.method === 'GET') {
       await requireRole(req,['superadmin','admin']);
       const mailConfig = await getEmailProviderConfig();
-      return reply({ configured: mailConfig.configured, fromEmail: mailConfig.fromEmail || null, senderName: mailConfig.senderName });
+      return reply({
+        configured: mailConfig.configured,
+        domainVerified: mailConfig.domainVerified,
+        fromEmail: mailConfig.fromEmail || null,
+        senderName: mailConfig.senderName
+      });
     }
 
     if (path === '/email/family-document' && req.method === 'POST') {
