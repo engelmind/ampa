@@ -54,7 +54,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
 
   return (
     <>
-      {cardArtifact && <PdfPreviewModal artifact={cardArtifact} onClose={()=>setCardArtifact(null)} onEmail={()=>setShowEmail(true)} emailLabel="Enviar carnet"/>}
+      {cardArtifact && <PdfPreviewModal artifact={cardArtifact} onClose={()=>setCardArtifact(null)} onEmail={canEdit ? ()=>setShowEmail(true) : undefined} emailLabel="Enviar carnet"/>}
       {cardArtifact && showEmail && <EmailCardModal family={family} artifact={cardArtifact} academicYear={settings.activeAcademicYear} onClose={()=>setShowEmail(false)} onSent={(recipient)=>onNotify?.('success','Carnet enviado',recipient)}/>}
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-950/55 p-0 sm:items-center sm:p-4">
       <div className="max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
