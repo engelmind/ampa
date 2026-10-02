@@ -332,12 +332,15 @@ export default function App() {
   const courseBreakdown = useMemo(() => {
     const map = new Map<string,{ label:string; count:number; order:number }>();
     activeFamilies.flatMap((family)=>family.students).forEach((student) => {
-      const official = hasOfficialCurrentCourse(student,settings.activeAcademicYear)
-        ? normalizeCourseLabel(student.className)
-        : '';
-      if (official) {
+      if (hasOfficialCurrentCourse(student,settings.activeAcademicYear)) {
+        const calculated = calculateStudentCourse(student,settings.activeAcademicYear);
+        const official = normalizeCourseLabel(calculated.fullDisplay);
         const current=map.get(official);
-        map.set(official,{label:official,count:(current?.count||0)+1,order:0});
+        map.set(official,{
+          label:official,
+          count:(current?.count||0)+1,
+          order:calculated.ageInAcademicYear,
+        });
         return;
       }
       if (!student.birthDateDDMMAAAA) {
