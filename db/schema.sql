@@ -49,8 +49,6 @@ create table if not exists guardians (
   phone text,
   email text,
   is_main_contact boolean not null default false,
-  communications_consent boolean,
-  privacy_consent boolean,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -71,7 +69,6 @@ create table if not exists students (
   class_name text,
   allergies text,
   special_needs text,
-  authorized_photo boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -140,6 +137,7 @@ create table if not exists ampa_private.email_config (
   singleton boolean primary key default true check (singleton),
   from_email text,
   sender_name text not null default 'AMPA Agustinos Granada',
+  domain_verified boolean not null default false,
   updated_at timestamptz not null default now()
 );
 revoke all on ampa_private.email_config from public, anon, authenticated;
