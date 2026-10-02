@@ -26,13 +26,12 @@ export interface PdfArtifact {
 export type ReportKind =
   | 'family-census'
   | 'active-families'
-  | 'pending-renewal'
+  | 'inactive-families'
   | 'students'
   | 'students-by-course'
   | 'guardians'
-  | 'privacy'
   | 'incomplete'
-  | 'renewal-history'
+  | 'course-history'
   | 'compact-family-cards'
   | 'sensitive-needs';
 
@@ -133,7 +132,7 @@ export function createFamiliesPdfArtifact(families:Family[],options:PdfReportOpt
       `Familia ${fam.familyName}`,
       main ? `${main.fullName}\n${[main.phone,main.email].filter(Boolean).join(' · ')}` : 'Sin contacto',
       students || 'Sin alumnos',
-      fam.isActiveThisYear ? 'ACTIVA':'PENDIENTE',
+      fam.isActiveThisYear ? 'ACTIVA':'INACTIVA',
     ];
   });
   return tableArtifact(
@@ -193,7 +192,7 @@ async function buildMembershipCardDoc(family:Family,academicYear:string,associat
 
   if(!family.isActiveThisYear){
     doc.setFillColor(253,224,15); doc.roundedRect(62,49,20,3,1,1,'F');
-    doc.setTextColor(126,34,34); doc.setFontSize(4.3); doc.text('PENDIENTE DE RENOVACIÓN',72,51.1,{align:'center'});
+    doc.setTextColor(126,34,34); doc.setFontSize(4.3); doc.text('CUOTA PENDIENTE',72,51.1,{align:'center'});
   }
   return doc;
 }
@@ -256,18 +255,18 @@ function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):
 export function createReportPdfArtifact(kind:ReportKind,families:Family[],settings:SystemSettings):PdfArtifact{
   const opts:PdfReportOptions={academicYear:settings.activeAcademicYear,schoolName:settings.schoolName,associationName:settings.associationName};
   const active=families.filter((f)=>f.isActiveThisYear);
-  const pending=families.filter((f)=>!f.isActiveThisYear);
+  const inactive=families.filter((f)=>!f.isActiveThisYear);
 
   if(kind==='family-census') return createFamiliesPdfArtifact(families,{...opts,title:'Censo de familias',filterLabel:`${families.length} familias`});
-  if(kind==='active-families') return createFamiliesPdfArtifact(active,{...opts,title:'Familias activas',filterLabel:`${active.length} familias renovadas`});
-  if(kind==='pending-renewal') return createFamiliesPdfArtifact(pending,{...opts,title:'Pendientes de renovación',filterLabel:`${pending.length} familias pendientes`});
+  if(kind==='active-families') return createFamiliesPdfArtifact(active,{...opts,title:'Familias activas',filterLabel:`${active.length} familias con cuota actual pagada`});
+  if(kind==='inactive-families') return createFamiliesPdfArtifact(inactive,{...opts,title:'Familias inactivas',filterLabel:`${inactive.length} familias con cuota actual pendiente`});
   if(kind==='compact-family-cards') return createCompactFamilyCardsPdf(families,settings);
 
   if(kind==='students'){
     const rows=families.flatMap((f)=>f.students.map((s)=>[
       `${s.firstName} ${s.lastName}`,f.familyName,
       s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),
-      calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay,s.groupLetter||'',f.isActiveThisYear?'ACTIVA':'PENDIENTE'
+      calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay,s.groupLetter||'',f.isActiveThisYear?'ACTIVA':'INACTIVA'
     ]));
     return tableArtifact('Listado de alumnos',`alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','F. NAC.','CURSO','GRUPO','FAMILIA'],rows,opts,{0:{cellWidth:48},1:{cellWidth:43},2:{cellWidth:24},3:{cellWidth:36},4:{cellWidth:18},5:{cellWidth:25}});
   }
@@ -286,12 +285,7 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
     return tableArtifact('Tutores y contactos',`tutores_contactos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['TUTOR/A','FAMILIA','RELACIÓN','TELÉFONO','EMAIL','CONTACTO'],rows,opts,{0:{cellWidth:50},1:{cellWidth:45},2:{cellWidth:27},3:{cellWidth:32},4:{cellWidth:75},5:{cellWidth:24}});
   }
 
-  if(kind==='privacy'){
-    const rows=families.flatMap((f)=>f.guardians.map((g)=>[
-      f.familyName,g.fullName,g.email||'',g.communicationsConsent===true?'SÍ':'NO/PEND.',g.privacyConsent===true?'SÍ':'NO/PEND.'
-    ]));
-    return tableArtifact('Consentimientos y privacidad',`consentimientos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['FAMILIA','ADULTO RESPONSABLE','EMAIL','COMUNICACIONES','PRIVACIDAD'],rows,opts,{0:{cellWidth:50},1:{cellWidth:63},2:{cellWidth:75},3:{cellWidth:34},4:{cellWidth:34}});
-  }
+
 
   if(kind==='incomplete'){
     const incomplete=families.filter((f)=>getFamilyDataIssues(f).length);
@@ -299,9 +293,9 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
     return tableArtifact('Fichas incompletas',`fichas_incompletas_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','DATOS A REVISAR','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:52},2:{cellWidth:'auto'},3:{cellWidth:28}});
   }
 
-  if(kind==='renewal-history'){
-    const rows=families.map((f)=>[f.membershipNumber,f.familyName,(f.activeYears||[]).join(', ')||'Sin renovaciones',f.registrationAcademicYear||'',f.isActiveThisYear?'ACTIVA':'PENDIENTE']);
-    return tableArtifact('Histórico de renovaciones',`historico_renovaciones_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','CURSOS ACTIVOS','CURSO ALTA','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:55},2:{cellWidth:'auto'},3:{cellWidth:33},4:{cellWidth:28}});
+  if(kind==='course-history'){
+    const rows=families.map((f)=>[f.membershipNumber,f.familyName,(f.activeYears||[]).join(', ')||'Sin histórico',f.registrationAcademicYear||'',f.isActiveThisYear?'ACTIVA':'PENDIENTE']);
+    return tableArtifact('Histórico de cursos',`historico_cursos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','CURSOS HISTÓRICOS','CURSO ALTA','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:55},2:{cellWidth:'auto'},3:{cellWidth:33},4:{cellWidth:28}});
   }
 
   if(kind==='sensitive-needs'){
