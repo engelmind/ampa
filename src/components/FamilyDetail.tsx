@@ -155,7 +155,6 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
                             <div>Etapa: <strong>{course.stageName}</strong></div>
                             {s.groupLetter && <div>Grupo: <strong>{s.groupLetter}</strong></div>}
                             {s.school && <div>Centro: <strong>{s.school}</strong></div>}
-                            {s.className && <div>Clase: <strong>{s.className}</strong></div>}
                           </div>
                           {(s.allergies || s.specialNeeds) && (
                             <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
