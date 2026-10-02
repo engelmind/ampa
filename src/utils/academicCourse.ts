@@ -33,13 +33,39 @@ export function hasOfficialCurrentCourse(
   return student.academicYear === academicYear && Boolean(String(student.className || '').trim());
 }
 
+export function normalizeCourseLabel(value?: string): string {
+  const raw = String(value || '').trim();
+  const normalized = raw.toUpperCase().replace(/\s+/g,' ');
+
+  let match = normalized.match(/^([345])\s*AÑOS$/);
+  if (match) {
+    const map: Record<string,string> = {
+      '3': '1º Infantil',
+      '4': '2º Infantil',
+      '5': '3º Infantil',
+    };
+    return map[match[1]];
+  }
+
+  match = normalized.match(/^([1-6])º\s*(PR|PRIMARIA)$/);
+  if (match) return `${match[1]}º Primaria`;
+
+  match = normalized.match(/^([1-4])º\s*ESO$/);
+  if (match) return `${match[1]}º ESO`;
+
+  match = normalized.match(/^([1-2])º\s*(BACH|BACHILLERATO)$/);
+  if (match) return `${match[1]}º Bachillerato`;
+
+  return raw;
+}
+
 function officialCourse(
   student: Pick<Student, 'birthYear' | 'birthDateDDMMAAAA' | 'courseOffset' | 'groupLetter' | 'academicYear' | 'className'>,
   academicYear: string
 ): CalculatedCourse | null {
   if (!hasOfficialCurrentCourse(student, academicYear)) return null;
 
-  const raw = String(student.className || '').trim();
+  const raw = normalizeCourseLabel(student.className);
   const normalized = raw
     .toUpperCase()
     .replace(/\s+/g,' ')
@@ -120,9 +146,9 @@ export function calculateStudentCourse(
   });
 
   if (effectiveAge < 3) return make('infantil', 'Infantil', 'Preescolar / Guardería');
-  if (effectiveAge === 3) return make('infantil', 'Educación Infantil', '1º Infantil (3 años)');
-  if (effectiveAge === 4) return make('infantil', 'Educación Infantil', '2º Infantil (4 años)');
-  if (effectiveAge === 5) return make('infantil', 'Educación Infantil', '3º Infantil (5 años)');
+  if (effectiveAge === 3) return make('infantil', 'Educación Infantil', '1º Infantil');
+  if (effectiveAge === 4) return make('infantil', 'Educación Infantil', '2º Infantil');
+  if (effectiveAge === 5) return make('infantil', 'Educación Infantil', '3º Infantil');
   if (effectiveAge >= 6 && effectiveAge <= 11) return make('primaria', 'Educación Primaria', `${effectiveAge - 5}º Primaria`);
   if (effectiveAge >= 12 && effectiveAge <= 15) return make('secundaria', 'Educación Secundaria (ESO)', `${effectiveAge - 11}º ESO`);
   if (effectiveAge >= 16 && effectiveAge <= 17) return make('bachillerato', 'Bachillerato', `${effectiveAge - 15}º Bachillerato`);
