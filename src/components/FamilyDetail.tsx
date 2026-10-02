@@ -89,7 +89,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
                   <div className="mt-2 text-sm font-bold">{family.registrationAcademicYear || family.activeYears[0] || '—'}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
-                  <div className="text-[10px] font-black uppercase text-slate-400">Histórico de cuotas</div>
+                  <div className="text-[10px] font-black uppercase text-slate-400">Cursos registrados</div>
                   <div className="mt-2 text-sm font-bold">{family.activeYears.length} curso(s)</div>
                 </div>
               </div>
@@ -187,7 +187,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
           {section === 'history' && (
             <div className="space-y-3">
               <div className="rounded-2xl bg-slate-50 p-4">
-                <div className="text-xs font-black uppercase tracking-wider text-slate-400">Renovaciones por curso</div>
+                <div className="text-xs font-black uppercase tracking-wider text-slate-400">Histórico de cursos</div>
                 <div className="mt-3 flex flex-wrap gap-2">{family.activeYears.length ? family.activeYears.map((y) => <span key={y} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">{y}</span>) : <span className="text-sm text-slate-400">Sin histórico</span>}</div>
               </div>
               <div>
