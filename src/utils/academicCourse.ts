@@ -8,6 +8,7 @@ export interface CalculatedCourse {
   ageInAcademicYear: number;
   isGraduated: boolean;
   birthYear: number;
+  isOfficial?: boolean;
 }
 
 export function getAcademicYearStart(academicYear: string): number {
@@ -25,10 +26,82 @@ export function getStudentBirthYear(student: Pick<Student, 'birthYear' | 'birthD
   return Number(student.birthYear) || new Date().getFullYear();
 }
 
+export function hasOfficialCurrentCourse(
+  student: Pick<Student, 'academicYear' | 'className'>,
+  academicYear: string
+): boolean {
+  return student.academicYear === academicYear && Boolean(String(student.className || '').trim());
+}
+
+function officialCourse(
+  student: Pick<Student, 'birthYear' | 'birthDateDDMMAAAA' | 'courseOffset' | 'groupLetter' | 'academicYear' | 'className'>,
+  academicYear: string
+): CalculatedCourse | null {
+  if (!hasOfficialCurrentCourse(student, academicYear)) return null;
+
+  const raw = String(student.className || '').trim();
+  const normalized = raw
+    .toUpperCase()
+    .replace(/\s+/g,' ')
+    .replace(' AÑOS',' AÑOS');
+
+  const baseYear = getAcademicYearStart(academicYear);
+  const birthYear = getStudentBirthYear(student);
+  const group = student.groupLetter ? ` ${student.groupLetter.trim().toUpperCase()}` : '';
+
+  const make = (
+    stage: EducationalStage,
+    stageName: string,
+    courseName: string,
+    ageInAcademicYear: number,
+    isGraduated = false
+  ): CalculatedCourse => ({
+    stage,
+    stageName,
+    courseName,
+    fullDisplay: `${raw}${group}`,
+    ageInAcademicYear,
+    isGraduated,
+    birthYear,
+    isOfficial: true,
+  });
+
+  let match = normalized.match(/^([345])\s*AÑOS$/);
+  if (match) {
+    const age = Number(match[1]);
+    return make('infantil','Educación Infantil',raw,age);
+  }
+
+  match = normalized.match(/^([1-6])º\s*(PR|PRIMARIA)$/);
+  if (match) {
+    const n = Number(match[1]);
+    return make('primaria','Educación Primaria',raw,5+n);
+  }
+
+  match = normalized.match(/^([1-4])º\s*ESO$/);
+  if (match) {
+    const n = Number(match[1]);
+    return make('secundaria','Educación Secundaria (ESO)',raw,11+n);
+  }
+
+  match = normalized.match(/^([1-2])º\s*(BACH|BACHILLERATO)$/);
+  if (match) {
+    const n = Number(match[1]);
+    return make('bachillerato','Bachillerato',raw,15+n);
+  }
+
+  // El curso proviene del listado oficial aunque su etiqueta no coincida
+  // con una de las abreviaturas conocidas.
+  return make('infantil','Curso oficial',raw,99);
+}
+
 export function calculateStudentCourse(
-  student: Pick<Student, 'birthYear' | 'birthDateDDMMAAAA' | 'courseOffset' | 'groupLetter'>,
+  student: Pick<Student, 'birthYear' | 'birthDateDDMMAAAA' | 'courseOffset' | 'groupLetter' | 'academicYear' | 'className'>,
   academicYear: string
 ): CalculatedCourse {
+  const official = officialCourse(student,academicYear);
+  if (official) return official;
+
   const baseYear = getAcademicYearStart(academicYear);
   const birthYear = getStudentBirthYear(student);
   const offset = student.courseOffset || 0;
@@ -43,6 +116,7 @@ export function calculateStudentCourse(
     ageInAcademicYear: effectiveAge,
     isGraduated,
     birthYear,
+    isOfficial: false,
   });
 
   if (effectiveAge < 3) return make('infantil', 'Infantil', 'Preescolar / Guardería');
