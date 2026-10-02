@@ -41,8 +41,10 @@ export const backendApi = {
   deleteFamily: (familyId: string) =>
     request<{ ok: boolean }>(`/api/families/${familyId}`, { method: 'DELETE' }),
 
-  renewFamily: (familyId: string, academicYear: string, status: 'renewed' | 'pending' | 'inactive') =>
-    request<{ ok: boolean }>('/api/renewals', { method: 'POST', body: JSON.stringify({ familyId, academicYear, status }) }),
+  setFamilyActive: (familyId: string, active: boolean) =>
+    request<{ ok: boolean }>(`/api/families/${familyId}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }),
+  resetAllFamiliesActive: (active: boolean) =>
+    request<{ ok: boolean; updated: number }>('/api/families/active/reset', { method: 'POST', body: JSON.stringify({ active }) }),
 
   getSettings: () => request<{ settings: SystemSettings }>('/api/settings'),
   saveSettings: (settings: SystemSettings) =>
