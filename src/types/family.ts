@@ -26,8 +26,6 @@ export interface Guardian {
   isMainContact: boolean;
   birthDateDDMMAAAA?: string;
   birthDate?: string;
-  communicationsConsent?: boolean;
-  privacyConsent?: boolean;
 }
 
 export interface Student {
@@ -45,7 +43,6 @@ export interface Student {
   className?: string;
   allergies?: string;
   specialNeeds?: string;
-  authorizedPhoto: boolean;
 }
 
 export interface Family {
@@ -75,7 +72,7 @@ export interface ActivityLogEntry {
   entityType: 'family' | 'user' | 'settings' | 'course' | 'export' | 'import' | 'card';
   entityId?: string;
   entityLabel?: string;
-  action: 'create' | 'update' | 'delete' | 'renew' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card';
+  action: 'create' | 'update' | 'delete' | 'renew' | 'activate' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card';
   summary: string;
 }
 
