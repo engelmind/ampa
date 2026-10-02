@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarDays, History, Mail, MapPin, Phone, ShieldCheck, UserRound, GraduationCap, Pencil, RefreshCcw, X, CreditCard, Trash2 } from 'lucide-react';
+import { CalendarDays, History, Mail, MapPin, Phone, UserRound, GraduationCap, Pencil, RefreshCcw, X, CreditCard, Trash2 } from 'lucide-react';
 import { ActivityLogEntry, Family, SystemSettings } from '../types/family';
 import { calculateStudentCourse } from '../utils/academicCourse';
 import { parseDDMMAAAA } from '../utils/dateUtils';
@@ -8,7 +8,7 @@ import { PdfPreviewModal } from './PdfPreviewModal';
 import { EmailCardModal } from './EmailCardModal';
 import { getFamilyDataIssues } from '../utils/dataQuality';
 
-type Section = 'family' | 'history' | 'privacy';
+type Section = 'family' | 'history';
 
 interface Props {
   family: Family;
@@ -17,13 +17,13 @@ interface Props {
   canEdit: boolean;
   onClose: () => void;
   onEdit: () => void;
-  onToggleRenewal: () => void;
+  onToggleActive: () => void;
   canDelete?: boolean;
   onDelete?: () => void;
   onNotify?: (type:'success'|'error'|'info',title:string,message?:string)=>void;
 }
 
-export function FamilyDetail({ family, settings, activity, canEdit, onClose, onEdit, onToggleRenewal, canDelete, onDelete, onNotify }: Props) {
+export function FamilyDetail({ family, settings, activity, canEdit, onClose, onEdit, onToggleActive, canDelete, onDelete, onNotify }: Props) {
   const [section, setSection] = useState<Section>('family');
   const [cardArtifact,setCardArtifact]=useState<PdfArtifact|null>(null);
   const [showEmail,setShowEmail]=useState(false);
@@ -48,7 +48,6 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
   const sections: Array<[Section, string, React.ComponentType<{ size?: number }>]> = [
     ['family', 'Unidad familiar', UserRound],
     ['history', 'Historial', History],
-    ['privacy', 'Privacidad', ShieldCheck],
   ];
 
   return (
@@ -63,7 +62,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
               <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{family.membershipNumber}</div>
               <h2 className="text-xl font-black">Familia {family.familyName}</h2>
               <div className="mt-1 text-xs text-slate-500">
-                Alta {new Date(family.registrationDate).toLocaleDateString('es-ES')} · {family.isActiveThisYear ? 'Activa' : 'Pendiente de renovación'}
+                Alta {new Date(family.registrationDate).toLocaleDateString('es-ES')} · {family.isActiveThisYear ? 'Activa · cuota actual pagada' : 'Inactiva · cuota pendiente'}
               </div>
             </div>
             <button type="button" onClick={onClose} aria-label="Cerrar ficha" className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
@@ -83,7 +82,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-[10px] font-black uppercase text-slate-400">Estado</div>
-                  <div className={`mt-2 font-extrabold ${family.isActiveThisYear ? 'text-emerald-700' : 'text-amber-700'}`}>{family.isActiveThisYear ? 'Renovada' : 'Pendiente'}</div>
+                  <div className={`mt-2 font-extrabold ${family.isActiveThisYear ? 'text-emerald-700' : 'text-amber-700'}`}>{family.isActiveThisYear ? 'Activa' : 'Inactiva'}</div>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <div className="text-[10px] font-black uppercase text-slate-400">Curso de alta</div>
@@ -206,27 +205,13 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
             </div>
           )}
 
-          {section === 'privacy' && (
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <h3 className="text-sm font-extrabold">Consentimientos y comunicaciones</h3>
-                <p className="mt-1 text-xs leading-5 text-slate-500">Los consentimientos se almacenan en la ficha central de cada adulto responsable y quedan incluidos en el historial de modificaciones.</p>
-              </div>
-              {family.guardians.map((g) => (
-                <div key={g.id} className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                  <div><div className="text-sm font-bold">{g.fullName}</div><div className="text-xs text-slate-500">{g.email || 'Sin email'}</div></div>
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-black ${g.communicationsConsent ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>Comunicaciones {g.communicationsConsent ? 'Sí' : 'No/pendiente'}</span>
-                  <span className={`rounded-full px-2 py-1 text-[10px] font-black ${g.privacyConsent ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>Privacidad {g.privacyConsent ? 'Sí' : 'No/pendiente'}</span>
-                </div>
-              ))}
-            </div>
-          )}
+
 
           <div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
             <button type="button" disabled={buildingCard} onClick={()=>void openCardPreview()} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold disabled:opacity-50"><CreditCard size={15}/>{buildingCard?'Generando…':'Carnet'}</button>
             {canDelete && onDelete && <button type="button" onClick={onDelete} className="flex min-h-11 items-center gap-2 rounded-xl border border-rose-200 px-4 text-xs font-bold text-rose-700"><Trash2 size={15}/> Eliminar</button>}
             {canEdit && <button type="button" onClick={onEdit} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold"><Pencil size={15}/> Editar familia</button>}
-            {canEdit && <button type="button" onClick={onToggleRenewal} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{family.isActiveThisYear ? 'Marcar no renovada' : 'Registrar renovación'}</button>}
+            {canEdit && <button type="button" onClick={onToggleActive} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><RefreshCcw size={15}/>{family.isActiveThisYear ? 'Marcar inactiva' : 'Marcar activa · cuota pagada'}</button>}
           </div>
         </div>
       </div>
