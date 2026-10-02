@@ -570,36 +570,76 @@ export default function App() {
           {tab === 'dashboard' && (
             <div className="space-y-5">
               <section className="overflow-hidden rounded-3xl bg-slate-950 text-white">
-                <div className="grid gap-6 p-6 lg:grid-cols-[1.45fr_.85fr] lg:p-7">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Panel operativo · Curso {settings.activeAcademicYear}</p>
-                    <h1 className="mt-2 text-2xl font-black sm:text-3xl">AMPA Agustinos Granada</h1>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Censo, cuotas, demografía familiar, calidad de datos y situación académica de los alumnos en una única vista.</p>
-                    <div className="mt-5 flex flex-wrap gap-2">
+                <div className="grid gap-7 p-6 lg:grid-cols-[1.02fr_1.28fr] lg:p-7">
+                  <div className="flex flex-col justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Panel operativo · Curso {settings.activeAcademicYear}</p>
+                      <h1 className="mt-2 text-2xl font-black sm:text-3xl">AMPA Agustinos Granada</h1>
+                      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Una lectura inmediata del tamaño de la asociación, las familias al día y la composición de su comunidad.</p>
+                    </div>
+                    <div className="mt-6 flex flex-wrap gap-2">
                       {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold hover:bg-rose-500"><Plus size={16}/> Nueva familia</button>}
                       <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><Clock3 size={16}/> Familias inactivas</button>
                       <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><FileWarning size={16}/> Revisar fichas</button>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                    <div className="flex items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Familias activas</div><div className="mt-1 text-4xl font-black">{activeRate}%</div></div><div className="text-right text-xs text-slate-300"><strong className="text-white">{activeCount}</strong> de {families.length}<br/>familias activas</div></div>
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${activeRate}%`}}/></div>
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                      <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{studentCount}</div><div className="text-[9px] uppercase text-slate-400">Alumnos</div></div>
-                      <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{recentRegistrations}</div><div className="text-[9px] uppercase text-slate-400">Altas 30 días</div></div>
-                      <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{averageStudents}</div><div className="text-[9px] uppercase text-slate-400">Hijos/familia</div></div>
+
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Magnitudes principales</div>
+                        <div className="mt-1 text-xs text-slate-300">Cuántos somos y situación de la cuota actual</div>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Familias</span>
+                          <Users size={17} className="text-slate-500"/>
+                        </div>
+                        <div className="mt-3 text-4xl font-black">{families.length}</div>
+                        <div className="mt-2 text-xs text-slate-300"><strong className="text-white">{activeCount}</strong> activas · {inactiveCount} inactivas</div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Padres / tutores</span>
+                          <UserRound size={17} className="text-slate-500"/>
+                        </div>
+                        <div className="mt-3 text-4xl font-black">{guardianCount}</div>
+                        <div className="mt-2 text-xs text-slate-300">{families.length ? (guardianCount / families.length).toFixed(1) : '0.0'} adultos por familia</div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Hijos / alumnos</span>
+                          <Baby size={17} className="text-slate-500"/>
+                        </div>
+                        <div className="mt-3 text-4xl font-black">{studentCount}</div>
+                        <div className="mt-2 text-xs text-slate-300">{averageStudents} hijos por familia</div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cuota actual</span>
+                          <CheckCircle2 size={17} className="text-slate-500"/>
+                        </div>
+                        <div className="mt-3 flex items-end justify-between gap-3">
+                          <div className="text-4xl font-black">{activeRate}%</div>
+                          <div className="pb-1 text-right text-[10px] leading-4 text-slate-400">{activeCount} de {families.length}<br/>familias activas</div>
+                        </div>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${activeRate}%`}}/></div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </section>
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {[
-                  ['Familias',families.length,Users,'Censo total'],
                   ['Inactivas',inactiveCount,Clock3,'Cuota pendiente'],
                   ['Contacto',`${contactRate}%`,ContactRound,'Teléfono o email'],
-                  ['Padres/tutores',guardianCount,UserRound,'Adultos registrados'],
-                  ['Hijos',studentCount,Baby,'Alumnos registrados'],
+                  ['Altas 30 días',recentRegistrations,UserPlus,'Nuevas familias'],
                   ['Sin curso',unassignedCourseCount,AlertTriangle,'Sin fecha de nacimiento'],
                   ['Fichas completas',`${completeRate}%`,CheckCircle2,'Calidad de datos'],
                 ].map(([label,value,Icon,hint]:any)=>(
