@@ -24,7 +24,7 @@ import { CompactFamilyGrid } from './components/CompactFamilyGrid';
 
 const defaultSettings: SystemSettings = {
   activeAcademicYear: '2026/2027',
-  schoolName: 'Colegio San Agustín Granada',
+  schoolName: 'Colegio Santo Tomás de Villanueva',
   associationName: 'AMPA Agustinos Granada',
   nifCif: '',
   contactEmail: '',
@@ -127,6 +127,19 @@ const yearFromDate = (raw?: string, fallback = new Date().getFullYear() - 6) => 
   return d.length === 8 && y > 1900 ? y : fallback;
 };
 
+const ageFromDDMMAAAA = (raw?: string): number | null => {
+  const d = String(raw || '').replace(/\D/g,'');
+  if (d.length !== 8) return null;
+  const day=Number(d.slice(0,2)), month=Number(d.slice(2,4)), year=Number(d.slice(4,8));
+  const born=new Date(year,month-1,day);
+  if (born.getFullYear()!==year || born.getMonth()!==month-1 || born.getDate()!==day) return null;
+  const now=new Date();
+  let age=now.getFullYear()-year;
+  const beforeBirthday = now.getMonth() < month-1 || (now.getMonth()===month-1 && now.getDate()<day);
+  if (beforeBirthday) age--;
+  return age;
+};
+
 const newGuardian = (): Guardian => ({
   id: `g-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
   fullName: '',
@@ -151,7 +164,6 @@ const newStudent = (): Student => ({
   groupLetter: '',
   allergies: '',
   specialNeeds: '',
-  authorizedPhoto: false,
 });
 
 export default function App() {
@@ -264,18 +276,19 @@ export default function App() {
 
   const activeCount = families.filter((f) => f.isActiveThisYear).length;
   const studentCount = families.reduce((n, f) => n + f.students.length, 0);
-  const pendingCount = families.length - activeCount;
+  const inactiveCount = families.length - activeCount;
   const incompleteFamilies = families.filter((f)=>getFamilyDataIssues(f).length>0);
-  const renewalRate = families.length ? Math.round((activeCount / families.length) * 100) : 0;
+  const activeRate = families.length ? Math.round((activeCount / families.length) * 100) : 0;
   const contactableCount = families.filter((family) => {
     const guardian = family.guardians.find((g)=>g.isMainContact) || family.guardians[0];
     return !!(guardian?.phone || guardian?.email);
   }).length;
   const contactRate = families.length ? Math.round((contactableCount / families.length) * 100) : 0;
-  const allGuardians = families.flatMap((family)=>family.guardians);
-  const privacyRate = allGuardians.length
-    ? Math.round((allGuardians.filter((guardian)=>guardian.privacyConsent === true).length / allGuardians.length) * 100)
-    : 0;
+  const guardianCount = families.reduce((total,family)=>total+family.guardians.length,0);
+  const unassignedCourseCount = families.reduce(
+    (total,family)=>total+family.students.filter((student)=>!student.birthDateDDMMAAAA).length,
+    0
+  );
   const completeRate = families.length ? Math.round(((families.length - incompleteFamilies.length) / families.length) * 100) : 0;
   const averageStudents = families.length ? (studentCount / families.length).toFixed(1) : '0.0';
   const recentRegistrations = families.filter((family) => {
@@ -283,9 +296,44 @@ export default function App() {
     return Number.isFinite(created) && created >= Date.now() - 30 * 24 * 60 * 60 * 1000;
   }).length;
 
+  const parentAgeBands = useMemo(() => {
+    const grouped = new Map<string,{label:string;count:number;order:number}>();
+    let missing=0, review=0;
+    families.flatMap((family)=>family.guardians).forEach((guardian)=>{
+      const age=ageFromDDMMAAAA(guardian.birthDateDDMMAAAA);
+      if (age === null) { missing++; return; }
+      if (age < 18 || age > 100) { review++; return; }
+      const start=Math.floor(age/5)*5;
+      const label=`${start}–${start+4}`;
+      const current=grouped.get(label);
+      grouped.set(label,{label,count:(current?.count||0)+1,order:start});
+    });
+    const rows=Array.from(grouped.values()).sort((a,b)=>a.order-b.order);
+    if (missing) rows.push({label:'Sin edad',count:missing,order:998});
+    if (review) rows.push({label:'Dato a revisar',count:review,order:999});
+    return rows;
+  },[families]);
+
+  const childAgeMetrics = useMemo(() => {
+    const rows=Array.from({length:16},(_,index)=>({label:String(index+3),age:index+3,count:0}));
+    let missing=0, outside=0;
+    families.flatMap((family)=>family.students).forEach((student)=>{
+      const age=ageFromDDMMAAAA(student.birthDateDDMMAAAA);
+      if (age === null) { missing++; return; }
+      if (age < 3 || age > 18) { outside++; return; }
+      rows[age-3].count++;
+    });
+    return {rows,missing,outside};
+  },[families]);
+
   const courseBreakdown = useMemo(() => {
     const map = new Map<string,{ label:string; count:number; order:number }>();
     families.flatMap((family)=>family.students).forEach((student) => {
+      if (!student.birthDateDDMMAAAA) {
+        const current=map.get('Sin curso asignado');
+        map.set('Sin curso asignado',{label:'Sin curso asignado',count:(current?.count||0)+1,order:999});
+        return;
+      }
       const calculated = calculateStudentCourse(student,settings.activeAcademicYear);
       const key = calculated.fullDisplay;
       const current = map.get(key);
@@ -399,9 +447,6 @@ export default function App() {
       guardians,
       students,
       registrationAcademicYear: editing.registrationAcademicYear || settings.activeAcademicYear,
-      activeYears: editing.isActiveThisYear && !editing.activeYears.includes(settings.activeAcademicYear)
-        ? [...editing.activeYears, settings.activeAcademicYear]
-        : editing.activeYears,
     };
 
     const existed = families.some((f) => f.id === ready.id);
@@ -422,13 +467,14 @@ export default function App() {
     if (!fam) return;
     const nextActive = !fam.isActiveThisYear;
     try {
-      await backendApi.renewFamily(id, settings.activeAcademicYear, nextActive ? 'renewed' : 'inactive');
+      await backendApi.setFamilyActive(id,nextActive);
       await loadWorkspace();
       const refreshed = (await backendApi.getFamilies()).families.find((f) => f.id === id);
       setSelected(refreshed || null);
-      toast('info', nextActive ? 'Renovación registrada' : 'Familia marcada como no renovada');
+      toast('info',nextActive ? 'Familia activada' : 'Familia desactivada',
+        nextActive ? 'Cuota actual registrada como pagada.' : 'Cuota actual marcada como pendiente.');
     } catch (error:any) {
-      toast('error', 'No se pudo actualizar la renovación', error?.message);
+      toast('error','No se pudo actualizar el estado de cuota',error?.message);
     }
   };
 
@@ -471,14 +517,14 @@ export default function App() {
   };
 
   const handleAdvanceYear = async (newYear: string) => {
-    if (!currentUser || !window.confirm(`Abrir el curso ${newYear}? Las familias quedarán pendientes de renovación y se conservará el histórico.`)) return;
+    if (!currentUser || !window.confirm(`Abrir el curso ${newYear}? Todas las familias quedarán inactivas hasta registrar el pago de la nueva cuota. El histórico anterior se conservará.`)) return;
     try {
       await backendApi.saveSettings({ ...settings, activeAcademicYear: newYear });
-      await Promise.all(families.map((family) => backendApi.renewFamily(family.id, newYear, 'pending')));
+      await backendApi.resetAllFamiliesActive(false);
       await loadWorkspace();
-      toast('success', 'Nuevo curso abierto', `Curso ${newYear} preparado para renovaciones.`);
+      toast('success','Nuevo curso abierto',`Curso ${newYear} preparado. Las familias deberán activarse al registrar su cuota.`);
     } catch (error:any) {
-      toast('error', 'No se pudo abrir el nuevo curso', error?.message);
+      toast('error','No se pudo abrir el nuevo curso',error?.message);
     }
   };
 
@@ -528,16 +574,16 @@ export default function App() {
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Panel operativo · Curso {settings.activeAcademicYear}</p>
                     <h1 className="mt-2 text-2xl font-black sm:text-3xl">AMPA Agustinos Granada</h1>
-                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Censo, renovaciones, calidad de datos y situación académica de los alumnos en una única vista.</p>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Censo, cuotas, demografía familiar, calidad de datos y situación académica de los alumnos en una única vista.</p>
                     <div className="mt-5 flex flex-wrap gap-2">
                       {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold hover:bg-rose-500"><Plus size={16}/> Nueva familia</button>}
-                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><Clock3 size={16}/> Renovaciones pendientes</button>
+                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><Clock3 size={16}/> Familias inactivas</button>
                       <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><FileWarning size={16}/> Revisar fichas</button>
                     </div>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-                    <div className="flex items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Renovación del curso</div><div className="mt-1 text-4xl font-black">{renewalRate}%</div></div><div className="text-right text-xs text-slate-300"><strong className="text-white">{activeCount}</strong> de {families.length}<br/>familias activas</div></div>
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${renewalRate}%`}}/></div>
+                    <div className="flex items-end justify-between gap-3"><div><div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Familias activas</div><div className="mt-1 text-4xl font-black">{activeRate}%</div></div><div className="text-right text-xs text-slate-300"><strong className="text-white">{activeCount}</strong> de {families.length}<br/>familias activas</div></div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${activeRate}%`}}/></div>
                     <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                       <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{studentCount}</div><div className="text-[9px] uppercase text-slate-400">Alumnos</div></div>
                       <div className="rounded-xl bg-white/5 p-2"><div className="text-lg font-black">{recentRegistrations}</div><div className="text-[9px] uppercase text-slate-400">Altas 30 días</div></div>
@@ -547,12 +593,14 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
                 {[
                   ['Familias',families.length,Users,'Censo total'],
-                  ['Pendientes',pendingCount,Clock3,'Renovación'],
+                  ['Inactivas',inactiveCount,Clock3,'Cuota pendiente'],
                   ['Contacto',`${contactRate}%`,ContactRound,'Teléfono o email'],
-                  ['Privacidad',`${privacyRate}%`,ShieldCheck,'Consentimientos'],
+                  ['Padres/tutores',guardianCount,UserRound,'Adultos registrados'],
+                  ['Hijos',studentCount,Baby,'Alumnos registrados'],
+                  ['Sin curso',unassignedCourseCount,AlertTriangle,'Sin fecha de nacimiento'],
                   ['Fichas completas',`${completeRate}%`,CheckCircle2,'Calidad de datos'],
                 ].map(([label,value,Icon,hint]:any)=>(
                   <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -561,6 +609,37 @@ export default function App() {
                     <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
                   </div>
                 ))}
+              </section>
+
+              <section className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="mb-4"><h2 className="text-sm font-extrabold">Edades de padres, madres y tutores</h2><p className="mt-1 text-xs text-slate-500">Distribución actual en franjas de 5 años para orientar actividades dirigidas a las familias.</p></div>
+                  <div className="space-y-2">
+                    {parentAgeBands.map((band)=>{
+                      const max=Math.max(1,...parentAgeBands.map((item)=>item.count));
+                      return <div key={band.label} className="grid grid-cols-[90px_1fr_34px] items-center gap-3">
+                        <span className="text-xs font-bold text-slate-600">{band.label}</span>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-900" style={{width:`${Math.max(4,(band.count/max)*100)}%`}}/></div>
+                        <strong className="text-right text-xs">{band.count}</strong>
+                      </div>;
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="mb-4 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-extrabold">Edades de hijos/as · 3 a 18 años</h2><p className="mt-1 text-xs text-slate-500">Número de alumnos por edad actual para detectar los grupos más representados.</p></div><div className="text-right text-[10px] text-slate-400">Sin fecha: <strong className="text-slate-600">{childAgeMetrics.missing}</strong><br/>Fuera 3–18: <strong className="text-slate-600">{childAgeMetrics.outside}</strong></div></div>
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                    {childAgeMetrics.rows.map((item)=>{
+                      const max=Math.max(1,...childAgeMetrics.rows.map((row)=>row.count));
+                      const height=Math.max(8,(item.count/max)*70);
+                      return <div key={item.age} className="flex min-w-0 flex-col items-center justify-end rounded-xl bg-slate-50 p-2">
+                        <div className="text-xs font-black">{item.count}</div>
+                        <div className="mt-1 flex h-[72px] items-end"><div className="w-4 rounded-t bg-rose-500" style={{height:`${height}px`}}/></div>
+                        <div className="mt-1 text-[10px] font-bold text-slate-500">{item.age} a.</div>
+                      </div>;
+                    })}
+                  </div>
+                </div>
               </section>
 
               <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
@@ -582,9 +661,9 @@ export default function App() {
                   <div className="mb-4 flex items-center gap-2"><TrendingUp size={18}/><h2 className="text-sm font-extrabold">Estado del censo</h2></div>
                   <div className="space-y-4">
                     {[
-                      ['Renovación',renewalRate],
+                      ['Familias activas',activeRate],
                       ['Contacto localizable',contactRate],
-                      ['Consentimiento privacidad',privacyRate],
+                      
                       ['Fichas completas',completeRate],
                     ].map(([label,value]:any)=>(
                       <div key={label}>
@@ -594,7 +673,7 @@ export default function App() {
                     ))}
                   </div>
                   <div className="mt-5 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="rounded-xl bg-amber-50 p-3 text-left"><div className="text-xl font-black text-amber-800">{pendingCount}</div><div className="text-[10px] font-bold text-amber-700">sin renovar</div></button>
+                    <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="rounded-xl bg-amber-50 p-3 text-left"><div className="text-xl font-black text-amber-800">{inactiveCount}</div><div className="text-[10px] font-bold text-amber-700">cuota pendiente</div></button>
                     <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="rounded-xl bg-rose-50 p-3 text-left"><div className="text-xl font-black text-rose-800">{incompleteFamilies.length}</div><div className="text-[10px] font-bold text-rose-700">por revisar</div></button>
                   </div>
                 </div>
@@ -610,7 +689,7 @@ export default function App() {
                     }).filter((f)=>!f.isActiveThisYear||getFamilyDataIssues(f).length).slice(0,6).map((f)=>(
                       <button key={f.id} onClick={()=>setSelected(f)} className="flex w-full items-center gap-3 p-3.5 text-left hover:bg-slate-50">
                         <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${f.isActiveThisYear?'bg-amber-50 text-amber-700':'bg-rose-50 text-rose-700'}`}>{f.isActiveThisYear?<AlertTriangle size={16}/>:<Clock3 size={16}/>}</div>
-                        <div className="min-w-0 flex-1"><div className="truncate text-xs font-extrabold">Familia {f.familyName}</div><div className="truncate text-[10px] text-slate-400">{!f.isActiveThisYear?'Pendiente de renovación':getFamilyDataIssues(f)[0]?.label}</div></div>
+                        <div className="min-w-0 flex-1"><div className="truncate text-xs font-extrabold">Familia {f.familyName}</div><div className="truncate text-[10px] text-slate-400">{!f.isActiveThisYear?'Cuota pendiente':getFamilyDataIssues(f)[0]?.label}</div></div>
                         <ChevronRight size={16} className="text-slate-300"/>
                       </button>
                     ))}
@@ -668,7 +747,7 @@ export default function App() {
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar familia, alumno, teléfono, email o nº de socio…" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:border-rose-400 focus:bg-white"/>
                 </label>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <select value={status} onChange={(e)=>setStatus(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los estados</option><option value="active">Activas</option><option value="inactive">Pendientes</option></select>
+                  <select value={status} onChange={(e)=>setStatus(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los estados</option><option value="active">Activas</option><option value="inactive">Inactivas</option></select>
                   <select value={academicYearFilter} onChange={(e)=>setAcademicYearFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los cursos</option>{academicYears.map((y)=><option key={y} value={y}>{y}</option>)}</select>
                   <select value={stageFilter} onChange={(e)=>setStageFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todas las etapas</option><option value="infantil">Infantil</option><option value="primaria">Primaria</option><option value="secundaria">Secundaria</option><option value="bachillerato">Bachillerato</option><option value="graduado">Graduado</option></select>
                   <select value={qualityFilter} onChange={(e)=>setQualityFilter(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todas las fichas</option><option value="incomplete">Datos incompletos</option></select>
@@ -719,8 +798,9 @@ export default function App() {
                     ['schoolName','Centro educativo'],
                     ['activeAcademicYear','Curso académico'],
                     ['contactEmail','Correo de contacto'],
+                    ['nifCif','NIF / CIF'],
                   ].map(([key,label]) => (
-                    <label key={key} className="space-y-1.5"><span className="text-xs font-bold text-slate-600">{label}</span><input disabled={!canEdit} value={(settings as any)[key]} onChange={(e) => setSettings({...settings,[key]:e.target.value})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm disabled:bg-slate-50"/></label>
+                    <label key={key} className="space-y-1.5"><span className="text-xs font-bold text-slate-600">{label}</span><input type={key==='contactEmail'?'email':'text'} disabled={!canEdit} value={(settings as any)[key] || ''} onChange={(e) => setSettings({...settings,[key]:e.target.value})} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm disabled:bg-slate-50"/></label>
                   ))}
                 </div>
                 {canEdit && <button type="button" onClick={() => updateSettings(settings)} className="mt-5 flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><Save size={16}/> Guardar ajustes</button>}
@@ -745,7 +825,7 @@ export default function App() {
           canEdit={canEdit}
           onClose={() => setSelected(null)}
           onEdit={() => { setEditing(hydrateFamilyForEditing(selected)); setSelected(null); }}
-          onToggleRenewal={() => toggleActive(selected.id)}
+          onToggleActive={() => toggleActive(selected.id)}
           canDelete={currentUser.role === 'superadmin'}
           onDelete={() => void deleteFamily(selected)}
           onNotify={toast}
@@ -769,7 +849,7 @@ export default function App() {
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Nombre de la familia</span><input value={editing.familyName} onChange={(e)=>setEditing({...editing,familyName:e.target.value})} placeholder="Ej. García López" className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
                   <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Nº de socio</span><input value={editing.membershipNumber} onChange={(e)=>setEditing({...editing,membershipNumber:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-mono"/></label>
-                  <label className="flex min-h-10 items-center gap-2 self-end rounded-xl border border-slate-200 px-3"><input type="checkbox" checked={editing.isActiveThisYear} onChange={(e)=>setEditing({...editing,isActiveThisYear:e.target.checked})}/><span className="text-xs font-bold">Activa {settings.activeAcademicYear}</span></label>
+                  <label className="flex min-h-10 items-center gap-2 self-end rounded-xl border border-slate-200 px-3"><input type="checkbox" checked={editing.isActiveThisYear} onChange={(e)=>setEditing({...editing,isActiveThisYear:e.target.checked})}/><span className="text-xs font-bold">Activa · cuota actual pagada</span></label>
                 </div>
               </section>
 
@@ -798,10 +878,7 @@ export default function App() {
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Teléfono</span><input value={g.phone} onChange={(e)=>updateGuardian(index,{phone:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Correo electrónico</span><input type="email" value={g.email} onChange={(e)=>updateGuardian(index,{email:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"/></label>
                       </div>
-                      <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-2">
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={g.communicationsConsent===true} onChange={(e)=>updateGuardian(index,{communicationsConsent:e.target.checked})}/> Autoriza comunicaciones del AMPA</label>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" checked={g.privacyConsent===true} onChange={(e)=>updateGuardian(index,{privacyConsent:e.target.checked})}/> Consentimiento de privacidad registrado</label>
-                      </div>
+
                     </div>
                   ))}
                 </div>
@@ -825,7 +902,6 @@ export default function App() {
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso</span><select value={s.courseOffset} onChange={(e)=>updateStudent(index,{courseOffset:Number(e.target.value)})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"><option value={-1}>-1 respecto al automático</option><option value={0}>Automático por edad</option><option value={1}>+1 respecto al automático</option></select></label>
                         <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Alergias / intolerancias</span><input value={s.allergies || ''} onChange={(e)=>updateStudent(index,{allergies:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Necesidades especiales</span><input value={s.specialNeeds || ''} onChange={(e)=>updateStudent(index,{specialNeeds:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-                        <label className="flex min-h-10 items-center gap-2 rounded-xl bg-slate-50 px-3 text-xs font-semibold text-slate-600"><input type="checkbox" checked={s.authorizedPhoto} onChange={(e)=>updateStudent(index,{authorizedPhoto:e.target.checked})}/> Autorización de imagen registrada</label>
                       </div>
                     </div>
                   ))}
