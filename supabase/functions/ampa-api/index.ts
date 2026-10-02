@@ -143,6 +143,20 @@ function safeUser(u:any) {
 async function readBody(req: Request) {
   try { return await req.json(); } catch { return {}; }
 }
+function normalizeGeneralSettings(raw:any) {
+  let value = raw;
+  for (let i=0; i<3 && typeof value === 'string'; i++) {
+    try { value = JSON.parse(value); } catch { break; }
+  }
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    activeAcademicYear: String(source.activeAcademicYear || '2026/2027'),
+    schoolName: String(source.schoolName || 'Colegio Santo Tomás de Villanueva'),
+    associationName: String(source.associationName || 'AMPA Agustinos Granada'),
+    nifCif: String(source.nifCif || ''),
+    contactEmail: String(source.contactEmail || ''),
+  };
+}
 async function loadFamilies() {
   const [families, guardians, students, renewals] = await Promise.all([
     sql`select * from families order by family_name`,
@@ -159,12 +173,12 @@ async function loadFamilies() {
     guardians:guardians.filter((g:any)=>g.family_id===f.id).map((g:any)=>({
       id:g.id, fullName:[g.first_name,g.last_name].filter(Boolean).join(' '), firstName:g.first_name,lastName:g.last_name,
       relationship:g.relationship,dni:g.dni||'',phone:g.phone||'',email:g.email||'',isMainContact:g.is_main_contact,
-      birthDateDDMMAAAA:ddmmyyyyFromDb(g.birth_date),communicationsConsent:g.communications_consent,privacyConsent:g.privacy_consent
+      birthDateDDMMAAAA:ddmmyyyyFromDb(g.birth_date)
     })),
     students:students.filter((s:any)=>s.family_id===f.id).map((s:any)=>({
       id:s.id,firstName:s.first_name,lastName:s.last_name,dni:s.dni||'',birthDateDDMMAAAA:ddmmyyyyFromDb(s.birth_date),
       birthYear:birthYearFromDb(s.birth_date,s.birth_year),courseOffset:s.course_offset,groupLetter:s.group_letter||'',academicYear:s.academic_year,
-      school:s.school||'',className:s.class_name||'',allergies:s.allergies||'',specialNeeds:s.special_needs||'',authorizedPhoto:s.authorized_photo
+      school:s.school||'',className:s.class_name||'',allergies:s.allergies||'',specialNeeds:s.special_needs||''
     }))
   }));
 }
@@ -172,15 +186,15 @@ async function replaceMembers(tx:any, familyId:string, body:any) {
   await tx`delete from guardians where family_id=${familyId}::uuid`;
   await tx`delete from students where family_id=${familyId}::uuid`;
   for (const g of body.guardians || []) {
-    await tx`insert into guardians(family_id,first_name,last_name,relationship,dni,birth_date,phone,email,is_main_contact,communications_consent,privacy_consent)
+    await tx`insert into guardians(family_id,first_name,last_name,relationship,dni,birth_date,phone,email,is_main_contact)
       values(${familyId}::uuid,${g.firstName||''},${g.lastName||''},${g.relationship||'otro'},${g.dni||null},
-      ${isoFromDDMMAAAA(g.birthDateDDMMAAAA)||g.birthDate||null}::date,${g.phone||null},${g.email||null},${!!g.isMainContact},${g.communicationsConsent??null},${g.privacyConsent??null})`;
+      ${isoFromDDMMAAAA(g.birthDateDDMMAAAA)||g.birthDate||null}::date,${g.phone||null},${g.email||null},${!!g.isMainContact})`;
   }
   for (const s of body.students || []) {
-    await tx`insert into students(family_id,first_name,last_name,dni,birth_date,birth_year,course_offset,group_letter,academic_year,school,class_name,allergies,special_needs,authorized_photo)
+    await tx`insert into students(family_id,first_name,last_name,dni,birth_date,birth_year,course_offset,group_letter,academic_year,school,class_name,allergies,special_needs)
       values(${familyId}::uuid,${s.firstName||''},${s.lastName||''},${s.dni||null},
       ${isoFromDDMMAAAA(s.birthDateDDMMAAAA)||s.birthDate||null}::date,${s.birthYear||null},${s.courseOffset||0},${s.groupLetter||''},
-      ${s.academicYear||null},${s.school||null},${s.className||null},${s.allergies||null},${s.specialNeeds||null},${!!s.authorizedPhoto})`;
+      ${s.academicYear||null},${s.school||null},${s.className||null},${s.allergies||null},${s.specialNeeds||null})`;
   }
 }
 async function replaceRenewals(tx:any, familyId:string, years:string[], userId:string) {
@@ -230,16 +244,16 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
         ${f.created_at||new Date().toISOString()}::timestamptz,${f.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const g of payload.guardians || []) {
-      await tx`insert into guardians(id,family_id,first_name,last_name,relationship,dni,birth_date,phone,email,is_main_contact,communications_consent,privacy_consent,created_at,updated_at)
+      await tx`insert into guardians(id,family_id,first_name,last_name,relationship,dni,birth_date,phone,email,is_main_contact,created_at,updated_at)
         values(${g.id}::uuid,${g.family_id}::uuid,${g.first_name},${g.last_name||''},${g.relationship},${g.dni||null},
-        ${g.birth_date||null}::date,${g.phone||null},${g.email||null},${!!g.is_main_contact},${g.communications_consent??null},
-        ${g.privacy_consent??null},${g.created_at||new Date().toISOString()}::timestamptz,${g.updated_at||new Date().toISOString()}::timestamptz)`;
+        ${g.birth_date||null}::date,${g.phone||null},${g.email||null},${!!g.is_main_contact},
+        ${g.created_at||new Date().toISOString()}::timestamptz,${g.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const s of payload.students || []) {
-      await tx`insert into students(id,family_id,first_name,last_name,dni,birth_date,birth_year,course_offset,group_letter,academic_year,school,class_name,allergies,special_needs,authorized_photo,created_at,updated_at)
+      await tx`insert into students(id,family_id,first_name,last_name,dni,birth_date,birth_year,course_offset,group_letter,academic_year,school,class_name,allergies,special_needs,created_at,updated_at)
         values(${s.id}::uuid,${s.family_id}::uuid,${s.first_name},${s.last_name||''},${s.dni||null},${s.birth_date||null}::date,
         ${s.birth_year||null},${s.course_offset||0},${s.group_letter||''},${s.academic_year||null},${s.school||null},${s.class_name||null},
-        ${s.allergies||null},${s.special_needs||null},${!!s.authorized_photo},${s.created_at||new Date().toISOString()}::timestamptz,
+        ${s.allergies||null},${s.special_needs||null},${s.created_at||new Date().toISOString()}::timestamptz,
         ${s.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const r of payload.renewals || []) {
@@ -248,7 +262,8 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
         ${r.renewed_by||null}::uuid,${r.created_at||new Date().toISOString()}::timestamptz,${r.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     if (payload.settings) {
-      await tx`insert into app_settings(key,value,updated_at) values('general',${JSON.stringify(payload.settings)}::jsonb,now())
+      const cleanSettings = normalizeGeneralSettings(payload.settings);
+      await tx`insert into app_settings(key,value,updated_at) values('general',${JSON.stringify(cleanSettings)}::jsonb,now())
         on conflict(key) do update set value=excluded.value,updated_at=now()`;
     }
   });
@@ -378,26 +393,54 @@ Deno.serve(async (req: Request) => {
       await log(u.id,'family','delete',`Familia eliminada: ${rows[0]?.family_name||id}`,id,rows[0]?.family_name||null); return reply({ok:true});
     }
 
+    const activeFamilyMatch=path.match(/^\/families\/([0-9a-f-]+)\/active$/i);
+    if (activeFamilyMatch && req.method === 'PATCH') {
+      const u=await requireRole(req,['superadmin','admin']);
+      const body=await readBody(req);
+      if (typeof body.active !== 'boolean') return reply({error:'INVALID_ACTIVE_STATUS'},400);
+      const id=activeFamilyMatch[1];
+      const rows=await sql`update families set is_active_this_year=${body.active},updated_at=now() where id=${id}::uuid returning family_name`;
+      if (!rows.length) return reply({error:'FAMILY_NOT_FOUND'},404);
+      await log(u.id,'family',body.active?'activate':'deactivate',
+        body.active ? 'Familia activada · cuota actual pagada' : 'Familia desactivada · cuota actual pendiente',
+        id,rows[0].family_name);
+      return reply({ok:true});
+    }
+
+    if (path === '/families/active/reset' && req.method === 'POST') {
+      const u=await requireRole(req,['superadmin','admin']);
+      const body=await readBody(req);
+      if (typeof body.active !== 'boolean') return reply({error:'INVALID_ACTIVE_STATUS'},400);
+      const rows=await sql`update families set is_active_this_year=${body.active},updated_at=now() returning id`;
+      await log(u.id,'course','update',
+        body.active ? 'Todas las familias marcadas activas' : 'Todas las familias marcadas inactivas para el nuevo curso');
+      return reply({ok:true,updated:rows.length});
+    }
+
+    // Ruta histórica: conserva cursos previos, pero ya no gobierna el estado activo actual.
     if (path === '/renewals' && req.method === 'POST') {
       const u=await requireRole(req,['superadmin','admin']); const body=await readBody(req);
       if (!body.familyId || !body.academicYear || !['renewed','pending','inactive'].includes(body.status)) return reply({error:'INVALID_RENEWAL'},400);
-      await sql.begin(async tx => {
-        await tx`insert into renewals(family_id,academic_year,status,renewed_at,renewed_by)
-          values(${body.familyId}::uuid,${body.academicYear},${body.status},case when ${body.status}='renewed' then now() else null end,${u.id}::uuid)
-          on conflict(family_id,academic_year) do update set status=excluded.status,renewed_at=excluded.renewed_at,renewed_by=excluded.renewed_by,updated_at=now()`;
-        await tx`update families set is_active_this_year=${body.status==='renewed'},updated_at=now() where id=${body.familyId}::uuid`;
-      });
-      await log(u.id,'family',body.status==='renewed'?'renew':'deactivate',`Renovación ${body.status}: ${body.academicYear}`,body.familyId,null); return reply({ok:true});
+      await sql`insert into renewals(family_id,academic_year,status,renewed_at,renewed_by)
+        values(${body.familyId}::uuid,${body.academicYear},${body.status},case when ${body.status}='renewed' then now() else null end,${u.id}::uuid)
+        on conflict(family_id,academic_year) do update set status=excluded.status,renewed_at=excluded.renewed_at,renewed_by=excluded.renewed_by,updated_at=now()`;
+      await log(u.id,'family','renew',`Histórico de curso actualizado: ${body.academicYear}`,body.familyId,null);
+      return reply({ok:true});
     }
 
     if (path === '/settings' && req.method === 'GET') {
-      await requireUser(req); const rows=await sql`select value from app_settings where key='general'`; return reply({settings:rows[0]?.value||{}});
+      await requireUser(req);
+      const rows=await sql`select value from app_settings where key='general'`;
+      return reply({settings:normalizeGeneralSettings(rows[0]?.value)});
     }
     if (path === '/settings' && req.method === 'PUT') {
-      const u=await requireRole(req,['superadmin','admin']); const body=await readBody(req);
-      await sql`insert into app_settings(key,value,updated_at) values('general',${JSON.stringify(body)}::jsonb,now())
+      const u=await requireRole(req,['superadmin','admin']);
+      const body=await readBody(req);
+      const clean=normalizeGeneralSettings(body);
+      await sql`insert into app_settings(key,value,updated_at) values('general',${JSON.stringify(clean)}::jsonb,now())
         on conflict(key) do update set value=excluded.value,updated_at=now()`;
-      await log(u.id,'settings','settings',`Ajustes actualizados. Curso: ${body.activeAcademicYear||'—'}`); return reply({settings:body});
+      await log(u.id,'settings','settings',`Ajustes actualizados. Curso: ${clean.activeAcademicYear}`);
+      return reply({settings:clean});
     }
 
     if (path === '/activity' && req.method === 'GET') {
