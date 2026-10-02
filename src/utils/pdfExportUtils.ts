@@ -276,7 +276,11 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
   }
 
   if(kind==='students-by-course'){
-    const data=families.flatMap((f)=>f.students.map((s)=>({f,s,c:s.birthDateDDMMAAAA ? calculateStudentCourse(s,settings.activeAcademicYear) : null})))
+    const data=families.flatMap((f)=>f.students.map((s)=>({
+      f,s,c:(hasOfficialCurrentCourse(s,settings.activeAcademicYear) || s.birthDateDDMMAAAA)
+        ? calculateStudentCourse(s,settings.activeAcademicYear)
+        : null
+    })))
       .sort((a,b)=>(a.c?.ageInAcademicYear ?? 999)-(b.c?.ageInAcademicYear ?? 999) || a.s.lastName.localeCompare(b.s.lastName,'es'));
     const rows=data.map(({f,s,c})=>[c?.fullDisplay || 'Sin curso asignado',`${s.firstName} ${s.lastName}`,f.familyName,s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),s.groupLetter||'']);
     return tableArtifact('Alumnos por curso',`alumnos_por_curso_${settings.activeAcademicYear.replace('/','-')}.pdf`,['CURSO','ALUMNO/A','FAMILIA','F. NAC.','GRUPO'],rows,opts,{0:{cellWidth:38,fontStyle:'bold'},1:{cellWidth:55},2:{cellWidth:52},3:{cellWidth:28},4:{cellWidth:20}});
@@ -293,7 +297,7 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
 
   if(kind==='incomplete'){
     const incomplete=families.filter((f)=>getFamilyDataIssues(f).length);
-    const rows=incomplete.map((f)=>[f.membershipNumber,f.familyName,getFamilyDataIssues(f).map((i)=>i.label).join('\n'),f.isActiveThisYear?'ACTIVA':'PENDIENTE']);
+    const rows=incomplete.map((f)=>[f.membershipNumber,f.familyName,getFamilyDataIssues(f).map((i)=>i.label).join('\n'),f.isActiveThisYear?'ACTIVA':'INACTIVA']);
     return tableArtifact('Fichas incompletas',`fichas_incompletas_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','DATOS A REVISAR','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:52},2:{cellWidth:'auto'},3:{cellWidth:28}});
   }
 
