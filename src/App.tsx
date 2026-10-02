@@ -8,7 +8,7 @@ import {
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
-import { calculateStudentCourse } from './utils/academicCourse';
+import { calculateStudentCourse, hasOfficialCurrentCourse } from './utils/academicCourse';
 import { familyMatchesStage, getAvailableAcademicYears, getFamilyDataIssues } from './utils/dataQuality';
 import { PdfArtifact } from './utils/pdfExportUtils';
 import { LoginScreen } from './components/LoginScreen';
@@ -286,7 +286,9 @@ export default function App() {
   const contactRate = families.length ? Math.round((contactableCount / families.length) * 100) : 0;
   const guardianCount = families.reduce((total,family)=>total+family.guardians.length,0);
   const unassignedCourseCount = families.reduce(
-    (total,family)=>total+family.students.filter((student)=>!student.birthDateDDMMAAAA).length,
+    (total,family)=>total+family.students.filter(
+      (student)=>!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA
+    ).length,
     0
   );
   const completeRate = families.length ? Math.round(((families.length - incompleteFamilies.length) / families.length) * 100) : 0;
@@ -329,7 +331,7 @@ export default function App() {
   const courseBreakdown = useMemo(() => {
     const map = new Map<string,{ label:string; count:number; order:number }>();
     families.flatMap((family)=>family.students).forEach((student) => {
-      if (!student.birthDateDDMMAAAA) {
+      if (!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA) {
         const current=map.get('Sin curso asignado');
         map.set('Sin curso asignado',{label:'Sin curso asignado',count:(current?.count||0)+1,order:999});
         return;
@@ -939,7 +941,8 @@ export default function App() {
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">DNI / NIE</span><input value={s.dni || ''} onChange={(e)=>updateStudent(index,{dni:e.target.value.toUpperCase()})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-mono"/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha de nacimiento</span><input inputMode="numeric" placeholder="DD/MM/AAAA" value={dateDisplay(s.birthDateDDMMAAAA)} onChange={(e)=>{const raw=normalizeDateInput(e.target.value);updateStudent(index,{birthDateDDMMAAAA:raw,birthYear:yearFromDate(raw,s.birthYear)});}} className={`min-h-10 w-full rounded-xl border px-3 text-sm font-mono ${validDate(s.birthDateDDMMAAAA) ? 'border-slate-200' : 'border-rose-400'}`}/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Grupo / letra</span><input value={s.groupLetter} onChange={(e)=>updateStudent(index,{groupLetter:e.target.value.toUpperCase().slice(0,2)})} placeholder="A" className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
-                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso</span><select value={s.courseOffset} onChange={(e)=>updateStudent(index,{courseOffset:Number(e.target.value)})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"><option value={-1}>-1 respecto al automático</option><option value={0}>Automático por edad</option><option value={1}>+1 respecto al automático</option></select></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso oficial {settings.activeAcademicYear}</span><select value={hasOfficialCurrentCourse(s,settings.activeAcademicYear) ? (s.className || '') : ''} onChange={(e)=>updateStudent(index,{className:e.target.value,academicYear:settings.activeAcademicYear})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"><option value="">Sin curso oficial</option><option>3 años</option><option>4 años</option><option>5 años</option><option>1º PR</option><option>2º PR</option><option>3º PR</option><option>4º PR</option><option>5º PR</option><option>6º PR</option><option>1º ESO</option><option>2º ESO</option><option>3º ESO</option><option>4º ESO</option><option>1º BACH</option><option>2º BACH</option></select></label>
+                        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Ajuste del cálculo por edad</span><select value={s.courseOffset} disabled={hasOfficialCurrentCourse(s,settings.activeAcademicYear)} onChange={(e)=>updateStudent(index,{courseOffset:Number(e.target.value)})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm disabled:bg-slate-50 disabled:text-slate-400"><option value={-1}>-1 respecto al automático</option><option value={0}>Automático por edad</option><option value={1}>+1 respecto al automático</option></select></label>
                         <label className="space-y-1 sm:col-span-2"><span className="text-[11px] font-bold text-slate-500">Alergias / intolerancias</span><input value={s.allergies || ''} onChange={(e)=>updateStudent(index,{allergies:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
                         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Necesidades especiales</span><input value={s.specialNeeds || ''} onChange={(e)=>updateStudent(index,{specialNeeds:e.target.value})} className="min-h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
                       </div>
