@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { CalendarRange, CheckCircle2, GraduationCap, RefreshCcw } from 'lucide-react';
 import { Family, SystemSettings } from '../types/family';
-import { calculateStudentCourse, getNextAcademicYear } from '../utils/academicCourse';
+import { calculateStudentCourse, getNextAcademicYear, hasOfficialCurrentCourse } from '../utils/academicCourse';
 
 interface Props {
   families: Family[];
@@ -17,7 +17,7 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
   const courseCounts = useMemo(() => {
     const counts = new Map<string,{label:string;stage:string;count:number;order:number}>();
     students.forEach(({student}) => {
-      if (!student.birthDateDDMMAAAA) {
+      if (!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA) {
         const current = counts.get('Sin curso asignado');
         counts.set('Sin curso asignado',{
           label:'Sin curso asignado',
@@ -47,7 +47,7 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
       <div>
         <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Cursos y estado de cuota</p>
         <h1 className="text-2xl font-black">Curso {settings.activeAcademicYear}</h1>
-        <p className="mt-1 text-xs text-slate-500">Los cursos se recalculan automáticamente desde la fecha de nacimiento. Una familia activa es la que tiene abonada la cuota del curso actual.</p>
+        <p className="mt-1 text-xs text-slate-500">Se usa primero el curso oficial registrado para {settings.activeAcademicYear}; si no existe, se calcula desde la fecha de nacimiento. Una familia activa es la que tiene abonada la cuota del curso actual.</p>
       </div>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -69,7 +69,7 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="mb-4 flex items-center gap-2"><GraduationCap size={18}/><div><h2 className="text-sm font-extrabold">Distribución por curso calculado</h2><p className="text-xs text-slate-500">Resultado actual para {settings.activeAcademicYear}. Los alumnos sin fecha de nacimiento quedan como «Sin curso asignado».</p></div></div>
+        <div className="mb-4 flex items-center gap-2"><GraduationCap size={18}/><div><h2 className="text-sm font-extrabold">Distribución por curso actual</h2><p className="text-xs text-slate-500">Prioriza el curso oficial {settings.activeAcademicYear}. Sólo queda «Sin curso asignado» quien no tenga curso oficial ni fecha suficiente para calcularlo.</p></div></div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {courseCounts.map((course) => (
             <div key={course.label} className="rounded-xl bg-slate-50 p-3">
@@ -86,11 +86,12 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
         <div className="border-b border-slate-100 p-4"><h2 className="text-sm font-extrabold">Alumnos y curso actual</h2><p className="text-xs text-slate-500">Comprobación individual del cálculo.</p></div>
         <div className="divide-y divide-slate-100">
           {students.map(({student,family})=>{
-            const course=student.birthDateDDMMAAAA ? calculateStudentCourse(student,settings.activeAcademicYear) : null;
+            const canResolveCourse=hasOfficialCurrentCourse(student,settings.activeAcademicYear) || !!student.birthDateDDMMAAAA;
+            const course=canResolveCourse ? calculateStudentCourse(student,settings.activeAcademicYear) : null;
             return <div key={student.id} className="grid gap-1 p-3.5 sm:grid-cols-[1fr_150px_120px] sm:items-center">
               <div><div className="text-xs font-bold">{student.firstName} {student.lastName}</div><div className="text-[10px] text-slate-400">Familia {family.familyName} · {student.birthDateDDMMAAAA ? student.birthDateDDMMAAAA.replace(/(\d{2})(\d{2})(\d{4})/,'$1/$2/$3') : 'sin fecha de nacimiento'}</div></div>
               <div className="text-xs font-extrabold text-rose-600">{course ? course.fullDisplay : 'Sin curso asignado'}</div>
-              <div className="text-[10px] text-slate-400">{course ? (student.courseOffset ? `Corrección ${student.courseOffset>0?'+':''}${student.courseOffset}` : 'Cálculo automático') : 'Requiere fecha'}</div>
+              <div className="text-[10px] text-slate-400">{course ? (course.isOfficial ? 'Curso oficial' : (student.courseOffset ? `Corrección ${student.courseOffset>0?'+':''}${student.courseOffset}` : 'Cálculo por edad')) : 'Sin curso y sin fecha'}</div>
             </div>;
           })}
           {!students.length&&<div className="p-8 text-center text-sm text-slate-400">No hay alumnos registrados.</div>}
