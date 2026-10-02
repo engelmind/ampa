@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
 import { Family, SystemSettings } from '../types/family';
-import { calculateStudentCourse } from './academicCourse';
+import { calculateStudentCourse, hasOfficialCurrentCourse } from './academicCourse';
 import { parseDDMMAAAA } from './dateUtils';
 import { getFamilyDataIssues } from './dataQuality';
 
@@ -36,7 +36,10 @@ export type ReportKind =
   | 'sensitive-needs';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[<>]/g,'');
-const studentCourseLabel = (student:any, academicYear:string) => student.birthDateDDMMAAAA ? calculateStudentCourse(student,academicYear).fullDisplay : 'Sin curso asignado';
+const studentCourseLabel = (student:any, academicYear:string) =>
+  (hasOfficialCurrentCourse(student,academicYear) || student.birthDateDDMMAAAA)
+    ? calculateStudentCourse(student,academicYear).fullDisplay
+    : 'Sin curso asignado';
 
 const artifact = (doc: jsPDF, filename: string, title: string, description?: string): PdfArtifact => ({
   blob: doc.output('blob'),
