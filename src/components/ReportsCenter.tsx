@@ -14,14 +14,13 @@ interface Props {
 
 const REPORTS:Array<{kind:ReportKind;title:string;description:string;icon:any;restricted?:boolean}>=[
   {kind:'family-census',title:'Censo de familias',description:'Familias, contacto principal, alumnos y estado.',icon:Users},
-  {kind:'active-families',title:'Familias activas',description:'Sólo familias renovadas en el curso actual.',icon:FileCheck2},
-  {kind:'pending-renewal',title:'Pendientes de renovación',description:'Familias sin renovar en el curso actual.',icon:AlertTriangle},
+  {kind:'active-families',title:'Familias activas',description:'Familias con la cuota actual pagada.',icon:FileCheck2},
+  {kind:'inactive-families',title:'Familias inactivas',description:'Familias con la cuota actual pendiente.',icon:AlertTriangle},
   {kind:'students',title:'Listado de alumnos',description:'Alumno, familia, nacimiento, curso y grupo.',icon:GraduationCap},
   {kind:'students-by-course',title:'Alumnos por curso',description:'Ordenados por curso calculado y fecha de nacimiento.',icon:GraduationCap},
   {kind:'guardians',title:'Tutores y contactos',description:'Padres, madres y tutores con teléfono y email.',icon:ContactRound},
-  {kind:'privacy',title:'Consentimientos',description:'Estado de comunicaciones y privacidad por adulto.',icon:ShieldCheck},
   {kind:'incomplete',title:'Fichas incompletas',description:'Datos pendientes de revisar por familia.',icon:AlertTriangle},
-  {kind:'renewal-history',title:'Histórico de renovaciones',description:'Cursos activos y situación actual por familia.',icon:History},
+  {kind:'course-history',title:'Histórico de cursos',description:'Cursos asociados históricamente a cada familia.',icon:History},
   {kind:'compact-family-cards',title:'Fichas familiares compactas',description:'8 fichas por A4. Pensado para censos muy grandes.',icon:LayoutGrid},
   {kind:'sensitive-needs',title:'Alergias y necesidades',description:'Informe restringido con datos especialmente sensibles.',icon:ShieldCheck,restricted:true},
 ];
