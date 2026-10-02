@@ -36,6 +36,7 @@ export type ReportKind =
   | 'sensitive-needs';
 
 const esc = (value: unknown) => String(value ?? '').replace(/[<>]/g,'');
+const studentCourseLabel = (student:any, academicYear:string) => student.birthDateDDMMAAAA ? calculateStudentCourse(student,academicYear).fullDisplay : 'Sin curso asignado';
 
 const artifact = (doc: jsPDF, filename: string, title: string, description?: string): PdfArtifact => ({
   blob: doc.output('blob'),
@@ -126,7 +127,7 @@ function tableArtifact(
 export function createFamiliesPdfArtifact(families:Family[],options:PdfReportOptions):PdfArtifact{
   const rows=families.map((fam)=>{
     const main=fam.guardians.find((g)=>g.isMainContact)||fam.guardians[0];
-    const students=fam.students.map((s)=>`${s.firstName} ${s.lastName} · ${calculateStudentCourse(s,options.academicYear).fullDisplay}`).join('\n');
+    const students=fam.students.map((s)=>`${s.firstName} ${s.lastName} · ${studentCourseLabel(s,options.academicYear)}`).join('\n');
     return [
       fam.membershipNumber,
       `Familia ${fam.familyName}`,
@@ -221,7 +222,7 @@ function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):
     const x=margin+col*(cardW+gapX), y=margin+row*(cardH+gapY);
     const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
     const issues=getFamilyDataIssues(family);
-    const students=family.students.slice(0,4).map((s)=>`${s.firstName} ${s.lastName} · ${calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay}`);
+    const students=family.students.slice(0,4).map((s)=>`${s.firstName} ${s.lastName} · ${studentCourseLabel(s,settings.activeAcademicYear)}`);
 
     doc.setDrawColor(226,232,240); doc.setFillColor(255,255,255); doc.roundedRect(x,y,cardW,cardH,2,2,'FD');
     doc.setFillColor(family.isActiveThisYear?16:245,family.isActiveThisYear?185:158,family.isActiveThisYear?129:11);
@@ -266,15 +267,15 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
     const rows=families.flatMap((f)=>f.students.map((s)=>[
       `${s.firstName} ${s.lastName}`,f.familyName,
       s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),
-      calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay,s.groupLetter||'',f.isActiveThisYear?'ACTIVA':'INACTIVA'
+      studentCourseLabel(s,settings.activeAcademicYear),s.groupLetter||'',f.isActiveThisYear?'ACTIVA':'INACTIVA'
     ]));
     return tableArtifact('Listado de alumnos',`alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','F. NAC.','CURSO','GRUPO','FAMILIA'],rows,opts,{0:{cellWidth:48},1:{cellWidth:43},2:{cellWidth:24},3:{cellWidth:36},4:{cellWidth:18},5:{cellWidth:25}});
   }
 
   if(kind==='students-by-course'){
-    const data=families.flatMap((f)=>f.students.map((s)=>({f,s,c:calculateStudentCourse(s,settings.activeAcademicYear)})))
-      .sort((a,b)=>a.c.ageInAcademicYear-b.c.ageInAcademicYear || a.s.lastName.localeCompare(b.s.lastName,'es'));
-    const rows=data.map(({f,s,c})=>[c.fullDisplay,`${s.firstName} ${s.lastName}`,f.familyName,s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),s.groupLetter||'']);
+    const data=families.flatMap((f)=>f.students.map((s)=>({f,s,c:s.birthDateDDMMAAAA ? calculateStudentCourse(s,settings.activeAcademicYear) : null})))
+      .sort((a,b)=>(a.c?.ageInAcademicYear ?? 999)-(b.c?.ageInAcademicYear ?? 999) || a.s.lastName.localeCompare(b.s.lastName,'es'));
+    const rows=data.map(({f,s,c})=>[c?.fullDisplay || 'Sin curso asignado',`${s.firstName} ${s.lastName}`,f.familyName,s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),s.groupLetter||'']);
     return tableArtifact('Alumnos por curso',`alumnos_por_curso_${settings.activeAcademicYear.replace('/','-')}.pdf`,['CURSO','ALUMNO/A','FAMILIA','F. NAC.','GRUPO'],rows,opts,{0:{cellWidth:38,fontStyle:'bold'},1:{cellWidth:55},2:{cellWidth:52},3:{cellWidth:28},4:{cellWidth:20}});
   }
 
@@ -300,7 +301,7 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
 
   if(kind==='sensitive-needs'){
     const rows=families.flatMap((f)=>f.students.filter((s)=>s.allergies||s.specialNeeds).map((s)=>[
-      `${s.firstName} ${s.lastName}`,f.familyName,calculateStudentCourse(s,settings.activeAcademicYear).fullDisplay,s.allergies||'',s.specialNeeds||''
+      `${s.firstName} ${s.lastName}`,f.familyName,studentCourseLabel(s,settings.activeAcademicYear),s.allergies||'',s.specialNeeds||''
     ]));
     return tableArtifact('Alergias y necesidades especiales',`datos_restringidos_alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','CURSO','ALERGIAS / INTOLERANCIAS','NECESIDADES'],rows,opts,{0:{cellWidth:50},1:{cellWidth:44},2:{cellWidth:37},3:{cellWidth:72},4:{cellWidth:74}},'Acceso restringido · Datos especialmente sensibles');
   }
