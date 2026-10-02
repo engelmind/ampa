@@ -17,6 +17,16 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
   const courseCounts = useMemo(() => {
     const counts = new Map<string,{label:string;stage:string;count:number;order:number}>();
     students.forEach(({student}) => {
+      if (!student.birthDateDDMMAAAA) {
+        const current = counts.get('Sin curso asignado');
+        counts.set('Sin curso asignado',{
+          label:'Sin curso asignado',
+          stage:'Falta fecha de nacimiento',
+          count:(current?.count || 0) + 1,
+          order:999,
+        });
+        return;
+      }
       const course = calculateStudentCourse(student,settings.activeAcademicYear);
       const current = counts.get(course.fullDisplay);
       counts.set(course.fullDisplay,{
@@ -30,14 +40,14 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
   },[families,settings.activeAcademicYear]);
 
   const active = families.filter((f) => f.isActiveThisYear).length;
-  const pending = families.length - active;
+  const inactive = families.length - active;
 
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Cursos y renovaciones</p>
+        <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Cursos y estado de cuota</p>
         <h1 className="text-2xl font-black">Curso {settings.activeAcademicYear}</h1>
-        <p className="mt-1 text-xs text-slate-500">Los cursos se recalculan automáticamente desde la fecha de nacimiento de cada alumno/a. La corrección manual ±1 sólo se conserva para excepciones.</p>
+        <p className="mt-1 text-xs text-slate-500">Los cursos se recalculan automáticamente desde la fecha de nacimiento. Una familia activa es la que tiene abonada la cuota del curso actual.</p>
       </div>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -49,17 +59,17 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <CheckCircle2 size={18} className="text-emerald-500"/>
           <div className="mt-3 text-2xl font-black">{active}</div>
-          <div className="text-xs text-slate-500">Familias renovadas</div>
+          <div className="text-xs text-slate-500">Familias activas · cuota pagada</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <RefreshCcw size={18} className="text-amber-500"/>
-          <div className="mt-3 text-2xl font-black">{pending}</div>
-          <div className="text-xs text-slate-500">Pendientes de renovación</div>
+          <div className="mt-3 text-2xl font-black">{inactive}</div>
+          <div className="text-xs text-slate-500">Familias inactivas · cuota pendiente</div>
         </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="mb-4 flex items-center gap-2"><GraduationCap size={18}/><div><h2 className="text-sm font-extrabold">Distribución por curso calculado</h2><p className="text-xs text-slate-500">Resultado actual para {settings.activeAcademicYear}.</p></div></div>
+        <div className="mb-4 flex items-center gap-2"><GraduationCap size={18}/><div><h2 className="text-sm font-extrabold">Distribución por curso calculado</h2><p className="text-xs text-slate-500">Resultado actual para {settings.activeAcademicYear}. Los alumnos sin fecha de nacimiento quedan como «Sin curso asignado».</p></div></div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {courseCounts.map((course) => (
             <div key={course.label} className="rounded-xl bg-slate-50 p-3">
@@ -76,11 +86,11 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
         <div className="border-b border-slate-100 p-4"><h2 className="text-sm font-extrabold">Alumnos y curso actual</h2><p className="text-xs text-slate-500">Comprobación individual del cálculo.</p></div>
         <div className="divide-y divide-slate-100">
           {students.map(({student,family})=>{
-            const course=calculateStudentCourse(student,settings.activeAcademicYear);
+            const course=student.birthDateDDMMAAAA ? calculateStudentCourse(student,settings.activeAcademicYear) : null;
             return <div key={student.id} className="grid gap-1 p-3.5 sm:grid-cols-[1fr_150px_120px] sm:items-center">
-              <div><div className="text-xs font-bold">{student.firstName} {student.lastName}</div><div className="text-[10px] text-slate-400">Familia {family.familyName} · {student.birthDateDDMMAAAA ? student.birthDateDDMMAAAA.replace(/(\d{2})(\d{2})(\d{4})/,'$1/$2/$3') : student.birthYear}</div></div>
-              <div className="text-xs font-extrabold text-rose-600">{course.fullDisplay}</div>
-              <div className="text-[10px] text-slate-400">{student.courseOffset ? `Corrección ${student.courseOffset>0?'+':''}${student.courseOffset}` : 'Cálculo automático'}</div>
+              <div><div className="text-xs font-bold">{student.firstName} {student.lastName}</div><div className="text-[10px] text-slate-400">Familia {family.familyName} · {student.birthDateDDMMAAAA ? student.birthDateDDMMAAAA.replace(/(\d{2})(\d{2})(\d{4})/,'$1/$2/$3') : 'sin fecha de nacimiento'}</div></div>
+              <div className="text-xs font-extrabold text-rose-600">{course ? course.fullDisplay : 'Sin curso asignado'}</div>
+              <div className="text-[10px] text-slate-400">{course ? (student.courseOffset ? `Corrección ${student.courseOffset>0?'+':''}${student.courseOffset}` : 'Cálculo automático') : 'Requiere fecha'}</div>
             </div>;
           })}
           {!students.length&&<div className="p-8 text-center text-sm text-slate-400">No hay alumnos registrados.</div>}
@@ -89,7 +99,7 @@ export function CoursesView({ families, settings, canEdit, onAdvanceYear }: Prop
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="text-sm font-extrabold">Preparar siguiente curso</h2>
-        <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Al iniciar {nextYear}, el histórico se conserva, las familias quedan pendientes de renovación y los cursos de todos los alumnos se recalculan automáticamente para el nuevo año académico.</p>
+        <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Al iniciar {nextYear}, el histórico se conserva, todas las familias quedan inactivas hasta registrar el pago de la cuota del nuevo curso y los cursos de los alumnos se recalculan automáticamente.</p>
         {canEdit && (
           <button type="button" onClick={() => onAdvanceYear(nextYear)} className="mt-4 min-h-11 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white">
             Abrir curso {nextYear}
