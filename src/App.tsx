@@ -274,26 +274,27 @@ export default function App() {
     });
   }, [families, query, status, academicYearFilter, stageFilter, qualityFilter, sortBy, sortOrder, settings.activeAcademicYear]);
 
-  const activeCount = families.filter((f) => f.isActiveThisYear).length;
-  const studentCount = families.reduce((n, f) => n + f.students.length, 0);
+  const activeFamilies = useMemo(() => families.filter((f) => f.isActiveThisYear), [families]);
+  const activeCount = activeFamilies.length;
+  const studentCount = activeFamilies.reduce((n, f) => n + f.students.length, 0);
   const inactiveCount = families.length - activeCount;
-  const incompleteFamilies = families.filter((f)=>getFamilyDataIssues(f).length>0);
+  const incompleteFamilies = activeFamilies.filter((f)=>getFamilyDataIssues(f).length>0);
   const activeRate = families.length ? Math.round((activeCount / families.length) * 100) : 0;
-  const contactableCount = families.filter((family) => {
+  const contactableCount = activeFamilies.filter((family) => {
     const guardian = family.guardians.find((g)=>g.isMainContact) || family.guardians[0];
     return !!(guardian?.phone || guardian?.email);
   }).length;
-  const contactRate = families.length ? Math.round((contactableCount / families.length) * 100) : 0;
-  const guardianCount = families.reduce((total,family)=>total+family.guardians.length,0);
-  const unassignedCourseCount = families.reduce(
+  const contactRate = activeFamilies.length ? Math.round((contactableCount / activeFamilies.length) * 100) : 0;
+  const guardianCount = activeFamilies.reduce((total,family)=>total+family.guardians.length,0);
+  const unassignedCourseCount = activeFamilies.reduce(
     (total,family)=>total+family.students.filter(
       (student)=>!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA
     ).length,
     0
   );
-  const completeRate = families.length ? Math.round(((families.length - incompleteFamilies.length) / families.length) * 100) : 0;
-  const averageStudents = families.length ? (studentCount / families.length).toFixed(1) : '0.0';
-  const recentRegistrations = families.filter((family) => {
+  const completeRate = activeFamilies.length ? Math.round(((activeFamilies.length - incompleteFamilies.length) / activeFamilies.length) * 100) : 0;
+  const averageStudents = activeFamilies.length ? (studentCount / activeFamilies.length).toFixed(1) : '0.0';
+  const recentRegistrations = activeFamilies.filter((family) => {
     const created = new Date(family.registrationDate).getTime();
     return Number.isFinite(created) && created >= Date.now() - 30 * 24 * 60 * 60 * 1000;
   }).length;
@@ -301,7 +302,7 @@ export default function App() {
   const parentAgeBands = useMemo(() => {
     const grouped = new Map<string,{label:string;count:number;order:number}>();
     let missing=0, review=0;
-    families.flatMap((family)=>family.guardians).forEach((guardian)=>{
+    activeFamilies.flatMap((family)=>family.guardians).forEach((guardian)=>{
       const age=ageFromDDMMAAAA(guardian.birthDateDDMMAAAA);
       if (age === null) { missing++; return; }
       if (age < 18 || age > 100) { review++; return; }
@@ -314,24 +315,30 @@ export default function App() {
     if (missing) rows.push({label:'Sin edad',count:missing,order:998});
     if (review) rows.push({label:'Dato a revisar',count:review,order:999});
     return rows;
-  },[families]);
+  },[activeFamilies]);
 
   const childAgeMetrics = useMemo(() => {
     const rows=Array.from({length:16},(_,index)=>({label:String(index+3),age:index+3,count:0}));
     let missing=0, outside=0;
-    families.flatMap((family)=>family.students).forEach((student)=>{
+    activeFamilies.flatMap((family)=>family.students).forEach((student)=>{
       const age=ageFromDDMMAAAA(student.birthDateDDMMAAAA);
       if (age === null) { missing++; return; }
       if (age < 3 || age > 18) { outside++; return; }
       rows[age-3].count++;
     });
     return {rows,missing,outside};
-  },[families]);
+  },[activeFamilies]);
 
   const courseBreakdown = useMemo(() => {
     const map = new Map<string,{ label:string; count:number; order:number }>();
-    families.flatMap((family)=>family.students).forEach((student) => {
-      if (!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA) {
+    activeFamilies.flatMap((family)=>family.students).forEach((student) => {
+      const official = hasOfficialCurrentCourse(student,settings.activeAcademicYear) ? student.className?.trim() : '';
+      if (official) {
+        const current=map.get(official);
+        map.set(official,{label:official,count:(current?.count||0)+1,order:0});
+        return;
+      }
+      if (!student.birthDateDDMMAAAA) {
         const current=map.get('Sin curso asignado');
         map.set('Sin curso asignado',{label:'Sin curso asignado',count:(current?.count||0)+1,order:999});
         return;
@@ -346,7 +353,7 @@ export default function App() {
       });
     });
     return Array.from(map.values()).sort((a,b)=>a.order-b.order || a.label.localeCompare(b.label,'es'));
-  },[families,settings.activeAcademicYear]);
+  },[activeFamilies,settings.activeAcademicYear]);
 
   const maxCourseCount = Math.max(1,...courseBreakdown.map((item)=>item.count));
   const recentActivity = activity.slice(0,7);
@@ -599,8 +606,8 @@ export default function App() {
                           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Familias</span>
                           <Users size={17} className="text-slate-500"/>
                         </div>
-                        <div className="mt-3 text-4xl font-black">{families.length}</div>
-                        <div className="mt-2 text-xs text-slate-300"><strong className="text-white">{activeCount}</strong> activas · {inactiveCount} inactivas</div>
+                        <div className="mt-3 text-4xl font-black">{activeCount}</div>
+                        <div className="mt-2 text-xs text-slate-300">Familias socias actuales · {inactiveCount} históricas inactivas</div>
                       </div>
 
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -609,7 +616,7 @@ export default function App() {
                           <UserRound size={17} className="text-slate-500"/>
                         </div>
                         <div className="mt-3 text-4xl font-black">{guardianCount}</div>
-                        <div className="mt-2 text-xs text-slate-300">{families.length ? (guardianCount / families.length).toFixed(1) : '0.0'} adultos por familia</div>
+                        <div className="mt-2 text-xs text-slate-300">{activeCount ? (guardianCount / activeCount).toFixed(1) : '0.0'} adultos por familia</div>
                       </div>
 
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -628,7 +635,7 @@ export default function App() {
                         </div>
                         <div className="mt-3 flex items-end justify-between gap-3">
                           <div className="text-4xl font-black">{activeRate}%</div>
-                          <div className="pb-1 text-right text-[10px] leading-4 text-slate-400">{activeCount} de {families.length}<br/>familias activas</div>
+                          <div className="pb-1 text-right text-[10px] leading-4 text-slate-400">{activeCount} activas<br/>{inactiveCount} históricas</div>
                         </div>
                         <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${activeRate}%`}}/></div>
                       </div>
