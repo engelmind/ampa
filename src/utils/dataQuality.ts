@@ -1,5 +1,5 @@
 import { Family, SystemSettings } from '../types/family';
-import { calculateStudentCourse } from './academicCourse';
+import { calculateStudentCourse, hasOfficialCurrentCourse } from './academicCourse';
 
 export type DataIssueLevel = 'important' | 'recommended';
 
@@ -29,7 +29,10 @@ export function getFamilyDataIssues(family: Family): DataIssue[] {
 
 export function familyMatchesStage(family: Family, academicYear: string, stage: string): boolean {
   if (!stage || stage === 'all') return true;
-  return family.students.some((student) => student.birthDateDDMMAAAA && calculateStudentCourse(student, academicYear).stage === stage);
+  return family.students.some((student) =>
+    (hasOfficialCurrentCourse(student,academicYear) || !!student.birthDateDDMMAAAA)
+    && calculateStudentCourse(student, academicYear).stage === stage
+  );
 }
 
 export function getAvailableAcademicYears(families: Family[], settings: SystemSettings): string[] {
