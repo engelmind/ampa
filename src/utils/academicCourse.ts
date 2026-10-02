@@ -47,6 +47,9 @@ export function normalizeCourseLabel(value?: string): string {
     return map[match[1]];
   }
 
+  match = normalized.match(/^([1-3])º\s*INFANTIL$/);
+  if (match) return `${match[1]}º Infantil`;
+
   match = normalized.match(/^([1-6])º\s*(PR|PRIMARIA)$/);
   if (match) return `${match[1]}º Primaria`;
 
@@ -92,10 +95,10 @@ function officialCourse(
     isOfficial: true,
   });
 
-  let match = normalized.match(/^([345])\s*AÑOS$/);
+  let match = normalized.match(/^([1-3])º\s*INFANTIL$/);
   if (match) {
-    const age = Number(match[1]);
-    return make('infantil','Educación Infantil',raw,age);
+    const n = Number(match[1]);
+    return make('infantil','Educación Infantil',raw,n + 2);
   }
 
   match = normalized.match(/^([1-6])º\s*(PR|PRIMARIA)$/);
