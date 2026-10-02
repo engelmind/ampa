@@ -82,7 +82,6 @@ const makeStudents = (row: Record<string,string>): Student[] => {
       groupLetter:val(row,[`hijo${i} grupo`,`alumno${i} grupo`]).toUpperCase().slice(0,2),
       allergies:val(row,[`hijo${i} alergias`,`alumno${i} alergias`]),
       specialNeeds:val(row,[`hijo${i} necesidades`,`alumno${i} necesidades`]),
-      authorizedPhoto:false,
     });
   }
   return students;
