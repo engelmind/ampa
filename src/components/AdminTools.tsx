@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArchiveRestore, DatabaseBackup, FileJson, FileText, KeyRound, Plus, Save, ShieldCheck, Upload, UserCog } from 'lucide-react';
+import { ArchiveRestore, DatabaseBackup, FileJson, FileText, KeyRound, Mail, Plus, Save, ShieldCheck, Upload, UserCog } from 'lucide-react';
 import { AppUser, Family, SystemSettings } from '../types/family';
 import { exportToJSON } from '../utils/exportUtils';
 import { backendApi } from '../services/backendApi';
@@ -21,6 +21,7 @@ export function AdminTools({ families, settings, currentUser, onFamiliesReload, 
   const [backups, setBackups] = useState<Backup[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [emailStatus,setEmailStatus]=useState<{configured:boolean;domainVerified?:boolean;fromEmail?:string|null;senderName?:string}|null>(null);
   const [newUser, setNewUser] = useState<AppUser>({ id:'', username:'', name:'', email:'', role:'user', password:'', isActive:true });
   const isSuper = currentUser.role === 'superadmin';
   const canAdminData = currentUser.role === 'superadmin' || currentUser.role === 'admin';
@@ -39,7 +40,13 @@ export function AdminTools({ families, settings, currentUser, onFamiliesReload, 
     catch(e:any){ onNotify('error','No se pudieron cargar las copias',e?.message); }
   };
 
-  useEffect(()=>{ void loadUsers(); void loadBackups(); },[isSuper]);
+  const loadEmailStatus = async () => {
+    if (!canAdminData) return;
+    try { setEmailStatus(await backendApi.emailStatus()); }
+    catch { setEmailStatus(null); }
+  };
+
+  useEffect(()=>{ void loadUsers(); void loadBackups(); void loadEmailStatus(); },[isSuper,canAdminData]);
 
   const downloadText=(filename:string,text:string,type:string)=>{
     const blob=new Blob([text],{type}); const href=URL.createObjectURL(blob); const a=document.createElement('a');
@@ -101,6 +108,22 @@ export function AdminTools({ families, settings, currentUser, onFamiliesReload, 
   return (
     <div className="space-y-5">
       {showImport && <ImportWizard canReplace={isSuper} onImport={runImport} onClose={()=>setShowImport(false)}/>}
+
+      {canAdminData && <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className={`rounded-xl p-2 ${emailStatus?.configured?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}><Mail size={18}/></div>
+            <div>
+              <h2 className="text-sm font-extrabold">Correo saliente</h2>
+              <p className="mt-1 text-xs text-slate-500">{emailStatus?.fromEmail || 'Remitente no configurado'}</p>
+            </div>
+          </div>
+          <div className={`w-fit rounded-full px-3 py-1.5 text-[10px] font-black uppercase ${emailStatus?.configured?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
+            {emailStatus?.configured ? 'Operativo' : emailStatus?.domainVerified===false ? 'Dominio no verificado' : 'No operativo'}
+          </div>
+        </div>
+        {!emailStatus?.configured && <p className="mt-3 text-[11px] leading-5 text-amber-700">El envío desde la aplicación está bloqueado hasta que el dominio del remitente quede verificado en el proveedor de correo.</p>}
+      </section>}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5">
         <div className="mb-4 flex items-center gap-2"><ShieldCheck size={18}/><div><h2 className="text-sm font-extrabold">Datos, importación y documentos</h2><p className="text-xs text-slate-500">Herramientas sobre la base central del AMPA.</p></div></div>
