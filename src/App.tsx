@@ -278,7 +278,7 @@ export default function App() {
   const activeCount = activeFamilies.length;
   const studentCount = activeFamilies.reduce((n, f) => n + f.students.length, 0);
   const inactiveCount = families.length - activeCount;
-  const incompleteFamilies = activeFamilies.filter((f)=>getFamilyDataIssues(f).length>0);
+  const incompleteFamilies = activeFamilies.filter((f)=>getFamilyDataIssues(f).some((issue)=>issue.level==='important'));
   const activeRate = families.length ? Math.round((activeCount / families.length) * 100) : 0;
   const contactableCount = activeFamilies.filter((family) => {
     const guardian = family.guardians.find((g)=>g.isMainContact) || family.guardians[0];
@@ -654,7 +654,7 @@ export default function App() {
                   ['Contacto',`${contactRate}%`,ContactRound,'Teléfono o email'],
                   ['Altas 30 días',recentRegistrations,UserPlus,'Nuevas familias'],
                   ['Sin curso',unassignedCourseCount,AlertTriangle,'Sin fecha de nacimiento'],
-                  ['Fichas completas',`${completeRate}%`,CheckCircle2,'Calidad de datos'],
+                  ['Fichas operativas',`${completeRate}%`,CheckCircle2,'Responsable y contacto'],
                 ].map(([label,value,Icon,hint]:any)=>(
                   <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{label}</span><Icon size={17} className="text-slate-400"/></div>
