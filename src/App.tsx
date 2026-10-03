@@ -3,12 +3,12 @@ import {
   LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
   UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
   AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby, Activity, BarChart3,
-  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning, LayoutGrid, List, Files
+  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning, LayoutGrid, List, Files, Table2, Rows3
 } from 'lucide-react';
 import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
-import { calculateStudentCourse, hasOfficialCurrentCourse, normalizeCourseLabel } from './utils/academicCourse';
+import { calculateStudentCourse, hasOfficialCurrentCourse, normalizeCourseLabel, getNextAcademicYear } from './utils/academicCourse';
 import { familyMatchesStage, getAvailableAcademicYears, getFamilyDataIssues } from './utils/dataQuality';
 import { PdfArtifact } from './utils/pdfExportUtils';
 import { LoginScreen } from './components/LoginScreen';
@@ -16,11 +16,11 @@ import { SetupScreen } from './components/SetupScreen';
 import { AmpaLogo } from './components/AmpaLogo';
 import { NotificationToast, ToastMessage } from './components/NotificationToast';
 import { FamilyDetail } from './components/FamilyDetail';
-import { CoursesView } from './components/CoursesView';
 import { AdminTools } from './components/AdminTools';
 import { ReportsCenter } from './components/ReportsCenter';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { CompactFamilyGrid } from './components/CompactFamilyGrid';
+import { CompactFamilyList } from './components/CompactFamilyList';
 
 const defaultSettings: SystemSettings = {
   activeAcademicYear: '2026/2027',
@@ -183,7 +183,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [bootState, setBootState] = useState<'loading' | 'setup' | 'login' | 'ready' | 'error'>('loading');
-  const [directoryView,setDirectoryView]=useState<'table'|'cards'>('table');
+  const [directoryView,setDirectoryView]=useState<'table'|'list'|'cards'>('table');
   const [reportsOpen,setReportsOpen]=useState(false);
   const [reportPreview,setReportPreview]=useState<PdfArtifact|null>(null);
 
@@ -566,11 +566,10 @@ export default function App() {
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[210px_1fr]">
         <aside className="lg:sticky lg:top-24 lg:self-start">
-          <nav className="grid grid-cols-4 gap-2 lg:grid-cols-1">
+          <nav className="grid grid-cols-3 gap-2 lg:grid-cols-1">
             {[
               ['dashboard', 'Panel', LayoutDashboard],
               ['families', 'Directorio', Users],
-              ['courses', 'Cursos', GraduationCap],
               ['settings', 'Ajustes', Settings],
             ].map(([id, label, Icon]: any) => (
               <button key={id} type="button" onClick={() => setTab(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold lg:justify-start ${tab === id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
@@ -788,7 +787,8 @@ export default function App() {
                   <button type="button" onClick={downloadCSV} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> Exportar CSV</button>
                   <button type="button" onClick={()=>setReportsOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Files size={16}/> Informes PDF</button>
                   <div className="flex rounded-xl bg-slate-100 p-1">
-                    <button type="button" onClick={()=>setDirectoryView('table')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='table'?'bg-white shadow-sm':'text-slate-500'}`}><List size={14}/> Tabla</button>
+                    <button type="button" onClick={()=>setDirectoryView('table')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='table'?'bg-white shadow-sm':'text-slate-500'}`}><Table2 size={14}/> Tabla</button>
+                    <button type="button" onClick={()=>setDirectoryView('list')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='list'?'bg-white shadow-sm':'text-slate-500'}`}><Rows3 size={14}/> Lista</button>
                     <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='cards'?'bg-white shadow-sm':'text-slate-500'}`}><LayoutGrid size={14}/> Fichas</button>
                   </div>
                   {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
@@ -811,6 +811,8 @@ export default function App() {
 
               {directoryView==='cards' ? (
                 <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={40}/>
+              ) : directoryView==='list' ? (
+                <CompactFamilyList families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={80}/>
               ) : (
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                   <div className="hidden grid-cols-[110px_1.3fr_1fr_110px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 md:grid">
@@ -837,10 +839,6 @@ export default function App() {
             </div>
           )}
 
-          {tab === 'courses' && (
-            <CoursesView families={families} settings={settings} canEdit={canEdit} onAdvanceYear={handleAdvanceYear} />
-          )}
-
           {tab === 'settings' && (
             <div className="space-y-5">
               <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Configuración</p><h1 className="text-2xl font-black">Ajustes del AMPA</h1></div>
@@ -850,7 +848,6 @@ export default function App() {
                   {[
                     ['associationName','Asociación'],
                     ['schoolName','Centro educativo'],
-                    ['activeAcademicYear','Curso académico'],
                     ['contactEmail','Correo de contacto'],
                     ['nifCif','NIF / CIF'],
                   ].map(([key,label]) => (
@@ -858,6 +855,18 @@ export default function App() {
                   ))}
                 </div>
                 {canEdit && <button type="button" onClick={() => updateSettings(settings)} className="mt-5 flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white"><Save size={16}/> Guardar ajustes</button>}
+              </section>
+              <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Gestión anual</div>
+                    <h2 className="mt-1 text-sm font-extrabold">Curso académico {settings.activeAcademicYear}</h2>
+                    <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">El cambio de curso se realiza aquí para conservar el histórico y marcar inicialmente las familias como inactivas hasta registrar el pago de la nueva cuota.</p>
+                  </div>
+                  {canEdit && <button type="button" onClick={()=>void handleAdvanceYear(getNextAcademicYear(settings.activeAcademicYear))} className="min-h-11 rounded-xl border border-slate-200 px-4 text-xs font-bold">
+                    Abrir curso {getNextAcademicYear(settings.activeAcademicYear)}
+                  </button>}
+                </div>
               </section>
               <AdminTools
                 families={families}
