@@ -543,237 +543,185 @@ export default function App() {
   };
 
   return (
-    <div className="ampa-app-shell min-h-screen text-slate-900">
+    <div className="min-h-screen bg-[#e8edf8] text-slate-900">
       {reportsOpen && <ReportsCenter allFamilies={families} filteredFamilies={filtered} settings={settings} role={currentUser.role} onPreview={(artifact)=>setReportPreview(artifact)} onClose={()=>setReportsOpen(false)}/>}
-      {reportPreview && <PdfPreviewModal artifact={reportPreview} onClose={()=>setReportPreview(null)}/>} 
-      <header className="ampa-topbar sticky top-0 z-30 border-b border-white/60 bg-white/75 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1440px] items-center gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
-          <AmpaLogo className="h-11 w-auto max-w-[210px]" />
-          <div className="hidden h-8 w-px bg-slate-200 sm:block" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-extrabold">Gestión de Familias</div>
-            <div className="text-[11px] text-slate-500">Curso {settings.activeAcademicYear} · base de datos central</div>
+      {reportPreview && <PdfPreviewModal artifact={reportPreview} onClose={()=>setReportPreview(null)}/>}
+      <div className="mx-auto max-w-[1440px] px-3 py-3 sm:px-5 sm:py-5">
+        <header className="sticky top-3 z-30 rounded-[28px] border border-white/70 bg-white/85 shadow-[0_18px_55px_rgba(71,85,105,0.12)] backdrop-blur-xl">
+          <div className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <AmpaLogo className="h-10 w-auto max-w-[190px]" />
+              <div className="hidden h-8 w-px bg-slate-200 lg:block"/>
+              <div className="hidden lg:block"><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Gestión AMPA</div><div className="text-xs font-bold text-slate-700">Curso {settings.activeAcademicYear}</div></div>
+            </div>
+            <nav className="mx-auto hidden items-center gap-1 rounded-2xl bg-slate-100/80 p-1 md:flex">
+              {[
+                ['dashboard','Panel',LayoutDashboard],
+                ['families','Directorio',Users],
+                ['settings','Ajustes',Settings],
+              ].map(([id,label,Icon]:any)=>(
+                <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center gap-2 rounded-xl px-4 text-xs font-extrabold transition ${tab===id?'bg-white text-slate-950 shadow-sm':'text-slate-500 hover:text-slate-800'}`}><Icon size={15}/>{label}</button>
+              ))}
+            </nav>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="hidden rounded-2xl bg-slate-50 px-3 py-2 text-right sm:block"><div className="text-[11px] font-extrabold text-slate-700">{currentUser.name}</div><div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{currentUser.role}</div></div>
+              <button type="button" onClick={handleLogout} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50"><LogOut size={15}/><span className="hidden sm:inline">Salir</span></button>
+            </div>
           </div>
-          <div className="hidden text-right md:block">
-            <div className="text-xs font-bold">{currentUser.name}</div>
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">{currentUser.role}</div>
-          </div>
-          <button type="button" onClick={handleLogout} className="ampa-soft-button flex min-h-11 items-center gap-2 rounded-2xl px-3.5 text-xs font-bold text-slate-700">
-            <LogOut size={16}/><span className="hidden sm:inline">Salir</span>
-          </button>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[232px_1fr] lg:px-8">
-        <aside className="ampa-sidebar lg:sticky lg:top-24 lg:self-start">
-          <nav className="grid grid-cols-3 gap-2 rounded-3xl border border-white/70 bg-white/72 p-2 shadow-[0_18px_55px_-28px_rgba(30,41,59,.32)] backdrop-blur-xl lg:grid-cols-1">
+          <nav className="grid grid-cols-3 gap-1 border-t border-slate-100 p-2 md:hidden">
             {[
-              ['dashboard', 'Panel', LayoutDashboard],
-              ['families', 'Directorio', Users],
-              ['settings', 'Ajustes', Settings],
-            ].map(([id, label, Icon]: any) => (
-              <button key={id} type="button" onClick={() => setTab(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold lg:justify-start ${tab === id ? 'ampa-nav-active text-white shadow-lg' : 'border border-transparent bg-white/55 text-slate-600 hover:border-white hover:bg-white hover:text-slate-900'}`}>
-                <Icon size={17}/><span>{label}</span>
-              </button>
+              ['dashboard','Panel',LayoutDashboard],
+              ['families','Directorio',Users],
+              ['settings','Ajustes',Settings],
+            ].map(([id,label,Icon]:any)=>(
+              <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl text-[11px] font-extrabold ${tab===id?'bg-slate-900 text-white':'text-slate-500'}`}><Icon size={14}/>{label}</button>
             ))}
           </nav>
-        </aside>
-
-        <main className="min-w-0">
+        </header>
+        <main className="mt-5 min-w-0">
           {tab === 'dashboard' && (
-            <div className="space-y-5">
-              <section className="ampa-hero relative overflow-hidden rounded-[2rem] text-white shadow-[0_28px_80px_-36px_rgba(30,41,59,.55)]">
-                <div className="grid gap-7 p-6 lg:grid-cols-[1.02fr_1.28fr] lg:p-7">
-                  <div className="flex flex-col justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Panel operativo · Curso {settings.activeAcademicYear}</p>
-                      <h1 className="mt-2 text-2xl font-black sm:text-3xl">AMPA Agustinos Granada</h1>
-                      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Una lectura inmediata del tamaño de la asociación, las familias al día y la composición de su comunidad.</p>
-                    </div>
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="ampa-primary-button flex min-h-11 items-center gap-2 rounded-2xl px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
-                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 text-xs font-bold backdrop-blur transition hover:bg-white/15"><Clock3 size={16}/> Familias inactivas</button>
-                      <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 text-xs font-bold backdrop-blur transition hover:bg-white/15"><FileWarning size={16}/> Revisar fichas</button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-3 flex items-center justify-between">
+            <div className="space-y-4 sm:space-y-5">
+              <section className="grid gap-4 xl:grid-cols-[1.45fr_.75fr]">
+                <div className="relative overflow-hidden rounded-[30px] border border-white/70 bg-gradient-to-br from-white via-white to-[#eef2ff] p-5 shadow-[0_20px_55px_rgba(71,85,105,0.10)] sm:p-7">
+                  <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-indigo-200/45 to-rose-100/20 blur-2xl"/>
+                  <div className="relative">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <div className="text-[10px] font-black uppercase tracking-[.16em] text-slate-400">Magnitudes principales</div>
-                        <div className="mt-1 text-xs text-slate-300">Cuántos somos y situación de la cuota actual</div>
+                        <div className="text-[10px] font-black uppercase tracking-[.22em] text-indigo-500">Panel operativo · {settings.activeAcademicYear}</div>
+                        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-[32px]">AMPA Agustinos Granada</h1>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Una lectura visual del tamaño de la asociación, el estado de las cuotas y la composición de las familias.</p>
+                      </div>
+                      <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 text-right shadow-sm backdrop-blur">
+                        <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Familias activas</div>
+                        <div className="mt-1 text-2xl font-black text-slate-950">{activeCount}</div>
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Familias</span>
-                          <Users size={17} className="text-slate-500"/>
+
+                    <div className="mt-7 grid gap-6 lg:grid-cols-[.9fr_1.1fr] lg:items-end">
+                      <div>
+                        <div className="flex items-end gap-3">
+                          <div className="text-5xl font-black tracking-[-.05em] text-slate-950">{activeRate}%</div>
+                          <div className="pb-1 text-xs font-semibold leading-5 text-slate-500">de familias<br/>al día</div>
                         </div>
-                        <div className="mt-3 text-4xl font-black">{activeCount}</div>
-                        <div className="mt-2 text-xs text-slate-300">Familias socias actuales · {inactiveCount} históricas inactivas</div>
+                        <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200/80">
+                          <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-violet-500 to-rose-500" style={{width:`${activeRate}%`}}/>
+                        </div>
+                        <div className="mt-2 flex justify-between text-[10px] font-semibold text-slate-400"><span>{activeCount} activas</span><span>{inactiveCount} históricas/inactivas</span></div>
                       </div>
 
-                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Padres / tutores</span>
-                          <UserRound size={17} className="text-slate-500"/>
-                        </div>
-                        <div className="mt-3 text-4xl font-black">{guardianCount}</div>
-                        <div className="mt-2 text-xs text-slate-300">{activeCount ? (guardianCount / activeCount).toFixed(1) : '0.0'} adultos por familia</div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          ['Padres / tutores',guardianCount,UserRound],
+                          ['Hijos',studentCount,Baby],
+                          ['Fichas operativas',`${completeRate}%`,CheckCircle2],
+                        ].map(([label,value,Icon]:any)=>(
+                          <div key={label} className="rounded-[20px] border border-white bg-white/75 p-3.5 shadow-sm backdrop-blur">
+                            <Icon size={16} className="text-indigo-400"/>
+                            <div className="mt-3 text-2xl font-black tracking-tight text-slate-950">{value}</div>
+                            <div className="mt-1 text-[10px] font-bold leading-4 text-slate-400">{label}</div>
+                          </div>
+                        ))}
                       </div>
+                    </div>
 
-                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Hijos / alumnos</span>
-                          <Baby size={17} className="text-slate-500"/>
-                        </div>
-                        <div className="mt-3 text-4xl font-black">{studentCount}</div>
-                        <div className="mt-2 text-xs text-slate-300">{averageStudents} hijos por familia</div>
-                      </div>
-
-                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cuota actual</span>
-                          <CheckCircle2 size={17} className="text-slate-500"/>
-                        </div>
-                        <div className="mt-3 flex items-end justify-between gap-3">
-                          <div className="text-4xl font-black">{activeRate}%</div>
-                          <div className="pb-1 text-right text-[10px] leading-4 text-slate-400">{activeCount} activas<br/>{inactiveCount} históricas</div>
-                        </div>
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className="ampa-progress h-full rounded-full" style={{width:`${activeRate}%`}}/></div>
-                      </div>
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white shadow-[0_10px_25px_rgba(15,23,42,.18)] hover:bg-slate-800"><Plus size={16}/> Nueva familia</button>}
+                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white bg-white/80 px-4 text-xs font-extrabold text-slate-600 shadow-sm"><Clock3 size={16}/> Familias inactivas</button>
+                      <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white bg-white/80 px-4 text-xs font-extrabold text-slate-600 shadow-sm"><FileWarning size={16}/> Revisar fichas</button>
                     </div>
                   </div>
                 </div>
-              </section>
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                {[
-                  ['Inactivas',inactiveCount,Clock3,'Cuota pendiente'],
-                  ['Contacto',`${contactRate}%`,ContactRound,'Teléfono o email'],
-                  ['Altas 30 días',recentRegistrations,UserPlus,'Nuevas familias'],
-                  ['Sin curso',unassignedCourseCount,AlertTriangle,'Sin fecha de nacimiento'],
-                  ['Fichas operativas',`${completeRate}%`,CheckCircle2,'Responsable y contacto'],
-                ].map(([label,value,Icon,hint]:any)=>(
-                  <div key={label} className="ampa-kpi-card rounded-3xl border border-white/80 bg-white/80 p-4 backdrop-blur">
-                    <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{label}</span><Icon size={17} className="text-slate-400"/></div>
-                    <div className="mt-4 text-3xl font-black tracking-tight">{value}</div>
-                    <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
+                <div className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_20px_55px_rgba(71,85,105,0.10)]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Resumen actual</div>
+                      <h2 className="mt-1 text-lg font-black text-slate-950">Indicadores clave</h2>
+                    </div>
+                    <div className="rounded-2xl bg-indigo-50 p-2.5 text-indigo-500"><TrendingUp size={18}/></div>
                   </div>
-                ))}
+                  <div className="mt-5 space-y-2.5">
+                    {[
+                      ['Contacto disponible',`${contactRate}%`,ContactRound,'bg-indigo-50 text-indigo-500'],
+                      ['Altas últimos 30 días',recentRegistrations,UserPlus,'bg-rose-50 text-rose-500'],
+                      ['Sin curso asignado',unassignedCourseCount,AlertTriangle,'bg-amber-50 text-amber-600'],
+                      ['Media hijos / familia',averageStudents,Baby,'bg-cyan-50 text-cyan-600'],
+                    ].map(([label,value,Icon,tone]:any)=>(
+                      <div key={label} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-3">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${tone}`}><Icon size={16}/></div>
+                        <div className="min-w-0 flex-1 text-xs font-bold text-slate-600">{label}</div>
+                        <div className="text-lg font-black text-slate-950">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </section>
 
               <section className="grid gap-4 xl:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="mb-4"><h2 className="text-sm font-extrabold">Edades de padres, madres y tutores</h2><p className="mt-1 text-xs text-slate-500">Distribución actual en franjas de 5 años para orientar actividades dirigidas a las familias.</p></div>
-                  <div className="space-y-2">
+                <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,0.08)]">
+                  <div className="mb-5 flex items-start justify-between gap-3">
+                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Demografía adulta</div><h2 className="mt-1 text-base font-black text-slate-950">Edades de padres y tutores</h2></div>
+                    <div className="rounded-xl bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500">Franjas de 5 años</div>
+                  </div>
+                  <div className="space-y-3">
                     {parentAgeBands.map((band)=>{
                       const max=Math.max(1,...parentAgeBands.map((item)=>item.count));
-                      return <div key={band.label} className="grid grid-cols-[90px_1fr_34px] items-center gap-3">
-                        <span className="text-xs font-bold text-slate-600">{band.label}</span>
-                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="ampa-progress h-full rounded-full" style={{width:`${Math.max(4,(band.count/max)*100)}%`}}/></div>
-                        <strong className="text-right text-xs">{band.count}</strong>
+                      const width=Math.max(4,(band.count/max)*100);
+                      return <div key={band.label} className="grid grid-cols-[72px_1fr_36px] items-center gap-3">
+                        <span className="text-[11px] font-extrabold text-slate-500">{band.label}</span>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-400" style={{width:`${width}%`}}/></div>
+                        <strong className="text-right text-xs text-slate-800">{band.count}</strong>
                       </div>;
                     })}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-sm font-extrabold">Edades de hijos/as · 3 a 18 años</h2><p className="mt-1 text-xs text-slate-500">Número de alumnos por edad actual para detectar los grupos más representados.</p></div><div className="text-right text-[10px] text-slate-400">Sin fecha: <strong className="text-slate-600">{childAgeMetrics.missing}</strong><br/>Fuera 3–18: <strong className="text-slate-600">{childAgeMetrics.outside}</strong></div></div>
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,0.08)]">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Demografía infantil / juvenil</div><h2 className="mt-1 text-base font-black text-slate-950">Edades de hijos · 3 a 18 años</h2></div>
+                    <div className="text-right text-[9px] font-semibold leading-4 text-slate-400">Sin fecha: {childAgeMetrics.missing}<br/>Fuera 3–18: {childAgeMetrics.outside}</div>
+                  </div>
+                  <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-8">
                     {childAgeMetrics.rows.map((item)=>{
                       const max=Math.max(1,...childAgeMetrics.rows.map((row)=>row.count));
-                      const height=Math.max(8,(item.count/max)*70);
-                      return <div key={item.age} className="flex min-w-0 flex-col items-center justify-end rounded-xl bg-slate-50 p-2">
-                        <div className="text-xs font-black">{item.count}</div>
-                        <div className="mt-1 flex h-[72px] items-end"><div className="ampa-bar w-4 rounded-t" style={{height:`${height}px`}}/></div>
-                        <div className="mt-1 text-[10px] font-bold text-slate-500">{item.age} a.</div>
+                      const height=Math.max(8,(item.count/max)*76);
+                      return <div key={item.age} className="flex min-w-0 flex-col items-center justify-end">
+                        <div className="mb-1 text-[9px] font-black text-slate-700">{item.count}</div>
+                        <div className="flex h-[78px] items-end"><div className="w-3 rounded-t-full bg-gradient-to-t from-rose-500 to-indigo-400" style={{height:`${height}px`}}/></div>
+                        <div className="mt-1 text-[9px] font-bold text-slate-400">{item.age}</div>
                       </div>;
                     })}
                   </div>
                 </div>
               </section>
 
-              <section className="grid gap-4 xl:grid-cols-[1.25fr_.75fr]">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="mb-4 flex items-center justify-between"><div><div className="flex items-center gap-2"><BarChart3 size={18}/><h2 className="text-sm font-extrabold">Distribución real por curso</h2></div><p className="mt-1 text-xs text-slate-500">Recalculada desde la fecha de nacimiento para {settings.activeAcademicYear}.</p></div><span className="text-xs font-bold text-slate-400">{studentCount} alumnos</span></div>
-                  <div className="space-y-3">
+              <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+                <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,0.08)]">
+                  <div className="mb-5 flex items-center justify-between">
+                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Distribución académica</div><h2 className="mt-1 text-base font-black text-slate-950">Alumnado por curso</h2></div>
+                    <GraduationCap size={19} className="text-indigo-400"/>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     {courseBreakdown.map((item)=>(
-                      <div key={item.label} className="grid grid-cols-[110px_1fr_28px] items-center gap-3">
-                        <div className="truncate text-xs font-bold text-slate-600">{item.label}</div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="ampa-progress h-full rounded-full" style={{width:`${Math.max(7,(item.count/maxCourseCount)*100)}%`}}/></div>
-                        <div className="text-right text-xs font-black">{item.count}</div>
-                      </div>
-                    ))}
-                    {!courseBreakdown.length&&<div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">No hay alumnos registrados.</div>}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="mb-4 flex items-center gap-2"><TrendingUp size={18}/><h2 className="text-sm font-extrabold">Estado del censo</h2></div>
-                  <div className="space-y-4">
-                    {[
-                      ['Familias activas',activeRate],
-                      ['Contacto localizable',contactRate],
-                      
-                      ['Fichas completas',completeRate],
-                    ].map(([label,value]:any)=>(
-                      <div key={label}>
-                        <div className="mb-1.5 flex justify-between text-xs"><span className="font-semibold text-slate-600">{label}</span><strong>{value}%</strong></div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="ampa-progress h-full rounded-full" style={{width:`${value}%`}}/></div>
+                      <div key={item.label} className="rounded-2xl bg-slate-50/90 p-3">
+                        <div className="flex items-center justify-between gap-3"><span className="truncate text-[11px] font-extrabold text-slate-600">{item.label}</span><strong className="text-xs text-slate-900">{item.count}</strong></div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-rose-400" style={{width:`${Math.max(5,(item.count/maxCourseCount)*100)}%`}}/></div>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-5 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="rounded-xl bg-amber-50 p-3 text-left"><div className="text-xl font-black text-amber-800">{inactiveCount}</div><div className="text-[10px] font-bold text-amber-700">cuota pendiente</div></button>
-                    <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="rounded-xl bg-rose-50 p-3 text-left"><div className="text-xl font-black text-rose-800">{incompleteFamilies.length}</div><div className="text-[10px] font-bold text-rose-700">por revisar</div></button>
-                  </div>
-                </div>
-              </section>
-
-              <section className="grid gap-4 lg:grid-cols-2">
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="text-sm font-extrabold">Prioridad administrativa</h2><p className="text-xs text-slate-500">Familias pendientes o con información incompleta.</p></div><button onClick={()=>setTab('families')} className="text-xs font-bold text-rose-600">Directorio</button></div>
-                  <div className="divide-y divide-slate-100">
-                    {[...families].sort((a,b)=>{
-                      const score=(f:Family)=>(f.isActiveThisYear?0:3)+getFamilyDataIssues(f).length;
-                      return score(b)-score(a);
-                    }).filter((f)=>!f.isActiveThisYear||getFamilyDataIssues(f).length).slice(0,6).map((f)=>(
-                      <button key={f.id} onClick={()=>setSelected(f)} className="flex w-full items-center gap-3 p-3.5 text-left hover:bg-slate-50">
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${f.isActiveThisYear?'bg-amber-50 text-amber-700':'bg-rose-50 text-rose-700'}`}>{f.isActiveThisYear?<AlertTriangle size={16}/>:<Clock3 size={16}/>}</div>
-                        <div className="min-w-0 flex-1"><div className="truncate text-xs font-extrabold">Familia {f.familyName}</div><div className="truncate text-[10px] text-slate-400">{!f.isActiveThisYear?'Cuota pendiente':getFamilyDataIssues(f)[0]?.label}</div></div>
-                        <ChevronRight size={16} className="text-slate-300"/>
-                      </button>
-                    ))}
-                    {families.every((f)=>f.isActiveThisYear&&!getFamilyDataIssues(f).length)&&<div className="p-8 text-center text-sm text-slate-400">No hay tareas prioritarias.</div>}
-                  </div>
                 </div>
 
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <div className="flex items-center justify-between border-b border-slate-100 p-4"><div className="flex items-center gap-2"><Activity size={17}/><div><h2 className="text-sm font-extrabold">Actividad reciente</h2><p className="text-xs text-slate-500">Últimos cambios registrados en el sistema.</p></div></div></div>
-                  <div className="divide-y divide-slate-100">
-                    {recentActivity.map((entry:any)=>(
-                      <div key={entry.id} className="p-3.5">
-                        <div className="flex justify-between gap-3"><div className="text-xs font-bold text-slate-700">{entry.summary}</div><div className="shrink-0 text-[9px] text-slate-400">{new Date(entry.timestamp).toLocaleDateString('es-ES')}</div></div>
-                        <div className="mt-1 text-[10px] text-slate-400">{entry.userName}</div>
+                <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,0.08)]">
+                  <div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Sistema</div><h2 className="mt-1 text-base font-black text-slate-950">Actividad reciente</h2></div><Activity size={18} className="text-indigo-400"/></div>
+                  <div className="mt-4 space-y-2">
+                    {recentActivity.slice(0,5).map((entry:any)=>(
+                      <div key={entry.id} className="rounded-2xl bg-slate-50/90 p-3">
+                        <div className="text-[11px] font-bold leading-4 text-slate-700">{entry.summary}</div>
+                        <div className="mt-1 flex justify-between gap-2 text-[9px] text-slate-400"><span>{entry.userName}</span><span>{new Date(entry.timestamp).toLocaleDateString('es-ES')}</span></div>
                       </div>
                     ))}
-                    {!recentActivity.length&&<div className="p-8 text-center text-sm text-slate-400">Sin actividad registrada.</div>}
+                    {!recentActivity.length&&<div className="rounded-2xl bg-slate-50 p-6 text-center text-xs text-slate-400">Sin actividad registrada.</div>}
                   </div>
-                </div>
-              </section>
-
-              <section className="rounded-2xl border border-slate-200 bg-white">
-                <div className="flex items-center justify-between border-b border-slate-100 p-4"><div><h2 className="text-sm font-extrabold">Altas recientes</h2><p className="text-xs text-slate-500">Últimas familias incorporadas al censo.</p></div><button onClick={()=>setTab('families')} className="flex items-center gap-1 text-xs font-bold text-rose-600">Ver directorio <ArrowRight size={13}/></button></div>
-                <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {[...families].sort((a,b)=>b.registrationDate.localeCompare(a.registrationDate)).slice(0,4).map((family)=>(
-                    <button key={family.id} onClick={()=>setSelected(family)} className="rounded-xl bg-slate-50 p-3 text-left hover:bg-slate-100">
-                      <div className="text-xs font-extrabold">Familia {family.familyName}</div>
-                      <div className="mt-1 text-[10px] text-slate-400">{family.membershipNumber} · {new Date(family.registrationDate).toLocaleDateString('es-ES')}</div>
-                      <div className="mt-2 text-[10px] font-semibold text-slate-500">{family.students.length} alumno{family.students.length===1?'':'s'}</div>
-                    </button>
-                  ))}
                 </div>
               </section>
             </div>
@@ -781,60 +729,62 @@ export default function App() {
 
           {tab === 'families' && (
             <div className="space-y-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div><p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">Directorio</p><h1 className="text-2xl font-black">Familias asociadas</h1></div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={downloadCSV} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Download size={16}/> Exportar CSV</button>
-                  <button type="button" onClick={()=>setReportsOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold"><Files size={16}/> Informes PDF</button>
-                  <div className="flex rounded-xl bg-slate-100 p-1">
-                    <button type="button" onClick={()=>setDirectoryView('table')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='table'?'bg-white shadow-sm':'text-slate-500'}`}><Table2 size={14}/> Tabla</button>
-                    <button type="button" onClick={()=>setDirectoryView('list')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='list'?'bg-white shadow-sm':'text-slate-500'}`}><Rows3 size={14}/> Lista</button>
-                    <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='cards'?'bg-white shadow-sm':'text-slate-500'}`}><LayoutGrid size={14}/> Fichas</button>
+              <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(71,85,105,.09)] sm:p-6">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-500">Directorio</div>
+                    <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Familias asociadas</h1>
+                    <p className="mt-2 text-sm text-slate-500">{filtered.length} resultados · {activeCount} familias activas en el curso {settings.activeAcademicYear}</p>
                   </div>
-                  {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="ampa-primary-button flex min-h-11 items-center gap-2 rounded-2xl px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={downloadCSV} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-extrabold text-slate-600 shadow-sm"><Download size={15}/> CSV</button>
+                    <button type="button" onClick={()=>setReportsOpen(true)} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 text-xs font-extrabold text-slate-600 shadow-sm"><Files size={15}/> PDF</button>
+                    {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-10 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white shadow-[0_10px_24px_rgba(15,23,42,.18)]"><Plus size={15}/> Nueva familia</button>}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
-                <label className="relative block">
-                  <Search size={17} className="absolute left-3 top-3.5 text-slate-400"/>
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar familia, alumno, teléfono, email o nº de socio…" className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm outline-none focus:border-rose-400 focus:bg-white"/>
-                </label>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  <select value={status} onChange={(e)=>setStatus(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los estados</option><option value="active">Activas</option><option value="inactive">Inactivas</option></select>
-                  <select value={academicYearFilter} onChange={(e)=>setAcademicYearFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todos los cursos</option>{academicYears.map((y)=><option key={y} value={y}>{y}</option>)}</select>
-                  <select value={stageFilter} onChange={(e)=>setStageFilter(e.target.value)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todas las etapas</option><option value="infantil">Infantil</option><option value="primaria">Primaria</option><option value="secundaria">Secundaria</option><option value="bachillerato">Bachillerato</option><option value="graduado">Graduado</option></select>
-                  <select value={qualityFilter} onChange={(e)=>setQualityFilter(e.target.value as any)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold"><option value="all">Todas las fichas</option><option value="incomplete">Datos incompletos</option></select>
-                  <div className="flex gap-2"><select value={sortBy} onChange={(e)=>setSortBy(e.target.value as any)} className="min-h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-2 text-xs font-bold"><option value="familyName">Orden: Familia</option><option value="membershipNumber">Orden: Socio</option><option value="registrationDate">Orden: Alta</option><option value="studentsCount">Orden: Nº alumnos</option></select><button type="button" onClick={()=>setSortOrder(v=>v==='asc'?'desc':'asc')} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-black">{sortOrder==='asc'?'↑':'↓'}</button></div>
+                <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto]">
+                  <label className="relative block">
+                    <Search size={17} className="absolute left-4 top-3.5 text-slate-400"/>
+                    <input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Buscar familia, alumno, teléfono, email o nº de socio…" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-slate-50/80 pl-11 pr-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"/>
+                  </label>
+                  <div className="flex rounded-2xl bg-slate-100 p-1">
+                    <button type="button" onClick={()=>setDirectoryView('table')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='table'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><Table2 size={14}/> Tabla</button>
+                    <button type="button" onClick={()=>setDirectoryView('list')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='list'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><Rows3 size={14}/> Lista</button>
+                    <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='cards'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><LayoutGrid size={14}/> Fichas</button>
+                  </div>
                 </div>
-              </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  <select value={status} onChange={(e)=>setStatus(e.target.value as any)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todos los estados</option><option value="active">Activas</option><option value="inactive">Inactivas</option></select>
+                  <select value={academicYearFilter} onChange={(e)=>setAcademicYearFilter(e.target.value)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todos los cursos</option>{academicYears.map((year)=><option key={year} value={year}>{year}</option>)}</select>
+                  <select value={stageFilter} onChange={(e)=>setStageFilter(e.target.value)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todas las etapas</option><option value="infantil">Infantil</option><option value="primaria">Primaria</option><option value="secundaria">ESO</option><option value="bachillerato">Bachillerato</option></select>
+                  <select value={qualityFilter} onChange={(e)=>setQualityFilter(e.target.value as any)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todas las fichas</option><option value="incomplete">Datos incompletos</option></select>
+                  <div className="flex gap-2"><select value={sortBy} onChange={(e)=>setSortBy(e.target.value as any)} className="min-h-10 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="familyName">Orden: Familia</option><option value="membershipNumber">Orden: Socio</option><option value="registrationDate">Orden: Alta</option><option value="studentsCount">Orden: Nº alumnos</option></select><button type="button" onClick={()=>setSortOrder(v=>v==='asc'?'desc':'asc')} className="min-h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 shadow-sm">{sortOrder==='asc'?'↑':'↓'}</button></div>
+                </div>
+              </section>
 
               {directoryView==='cards' ? (
                 <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={40}/>
               ) : directoryView==='list' ? (
                 <CompactFamilyList families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={80}/>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                  <div className="hidden grid-cols-[110px_1.3fr_1fr_110px_40px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wider text-slate-400 md:grid">
-                    <span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/>
-                  </div>
+                <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
+                  <div className="hidden grid-cols-[110px_1.3fr_1fr_120px_40px] gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-3 text-[9px] font-black uppercase tracking-[.14em] text-slate-400 md:grid"><span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/></div>
                   <div className="divide-y divide-slate-100">
-                    {filtered.map((f) => {
-                      const g = f.guardians.find((x) => x.isMainContact) || f.guardians[0];
-                      return (
-                        <button key={f.id} type="button" onClick={() => setSelected(f)} className="grid w-full gap-2 p-4 text-left hover:bg-slate-50 md:grid-cols-[110px_1.3fr_1fr_110px_40px] md:items-center md:gap-3">
-                          <span className="font-mono text-xs font-bold text-slate-500">{f.membershipNumber}</span>
-                          <span><span className="block text-sm font-extrabold">Familia {f.familyName}</span><span className="text-[11px] text-slate-400">{f.students.length} alumno{f.students.length === 1 ? '' : 's'}</span></span>
-                          <span className="text-xs text-slate-500">{g?.fullName || 'Sin contacto'}<span className="block text-[11px] text-slate-400">{g?.phone}</span></span>
-                          <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${f.isActiveThisYear ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{f.isActiveThisYear ? 'Activa' : 'Pendiente'}</span>
-                          <ChevronRight size={17} className="hidden text-slate-300 md:block"/>
-                        </button>
-                      );
+                    {filtered.map((family)=>{
+                      const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
+                      return <button key={family.id} type="button" onClick={()=>setSelected(family)} className="group grid w-full gap-2 px-5 py-4 text-left transition hover:bg-indigo-50/40 md:grid-cols-[110px_1.3fr_1fr_120px_40px] md:items-center md:gap-3">
+                        <span className="font-mono text-[11px] font-bold text-slate-400">{family.membershipNumber}</span>
+                        <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-800">Familia {family.familyName}</span><span className="mt-0.5 block text-[10px] font-semibold text-slate-400">{family.students.length} alumno{family.students.length===1?'':'s'}</span></span>
+                        <span className="min-w-0 text-xs font-semibold text-slate-500"><span className="block truncate">{main?.fullName||'Sin contacto'}</span><span className="block truncate text-[10px] font-normal text-slate-400">{main?.phone||main?.email||'—'}</span></span>
+                        <span className={`w-fit rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
+                        <ChevronRight size={16} className="hidden text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-400 md:block"/>
+                      </button>;
                     })}
-                    {filtered.length === 0 && <div className="p-12 text-center text-sm text-slate-400">No hay familias que coincidan con la búsqueda.</div>}
+                    {!filtered.length&&<div className="p-12 text-center text-sm text-slate-400">No hay familias que coincidan con los filtros.</div>}
                   </div>
                 </div>
-  
               )}
             </div>
           )}
