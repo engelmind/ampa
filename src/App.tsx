@@ -552,30 +552,34 @@ export default function App() {
             <div className="flex min-w-0 items-center gap-3">
               <AmpaLogo className="h-10 w-auto max-w-[190px]" />
               <div className="hidden h-8 w-px bg-slate-200 lg:block"/>
-              <div className="hidden lg:block">
-                <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Gestión AMPA</div>
-                <div className="text-xs font-bold text-slate-700">Curso {settings.activeAcademicYear}</div>
-              </div>
+              <div className="hidden lg:block"><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Gestión AMPA</div><div className="text-xs font-bold text-slate-700">Curso {settings.activeAcademicYear}</div></div>
             </div>
-
             <nav className="mx-auto hidden items-center gap-1 rounded-2xl bg-slate-100/80 p-1 md:flex">
               {[
-                ['dashboard', 'Panel', LayoutDashboard],
-                ['families', 'Directorio', Users],
-                ['settings', 'Ajustes', Settings],
+                ['dashboard','Panel',LayoutDashboard],
+                ['families','Directorio',Users],
+                ['settings','Ajustes',Settings],
               ].map(([id,label,Icon]:any)=>(
-                <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center gap-2 rounded-xl px-4 text-xs font-extrabold transition ${tab===id?'bg-white text-slate-950 shadow-sm':'text-slate-500 hover:text-slate-800'}`}>
-                  <Icon size={15}/>{label}
-                </button>
+                <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center gap-2 rounded-xl px-4 text-xs font-extrabold transition ${tab===id?'bg-white text-slate-950 shadow-sm':'text-slate-500 hover:text-slate-800'}`}><Icon size={15}/>{label}</button>
               ))}
             </nav>
-
             <div className="ml-auto flex items-center gap-2">
-              <div className="hidden rounded-2xl bg-slate-50 px-3 py-2 text-right sm:block">
-                <div className="text-[11px] font-extrabold text-slate-700">{currentUser.name}</div>
-                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{currentUser.role}</div>
-              </div>
-              <button type="button" onClick={handleLogout} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs          {tab === 'dashboard' && (
+              <div className="hidden rounded-2xl bg-slate-50 px-3 py-2 text-right sm:block"><div className="text-[11px] font-extrabold text-slate-700">{currentUser.name}</div><div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{currentUser.role}</div></div>
+              <button type="button" onClick={handleLogout} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50"><LogOut size={15}/><span className="hidden sm:inline">Salir</span></button>
+            </div>
+          </div>
+          <nav className="grid grid-cols-3 gap-1 border-t border-slate-100 p-2 md:hidden">
+            {[
+              ['dashboard','Panel',LayoutDashboard],
+              ['families','Directorio',Users],
+              ['settings','Ajustes',Settings],
+            ].map(([id,label,Icon]:any)=>(
+              <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl text-[11px] font-extrabold ${tab===id?'bg-slate-900 text-white':'text-slate-500'}`}><Icon size={14}/>{label}</button>
+            ))}
+          </nav>
+        </header>
+        <main className="mt-5 min-w-0">
+          {tab === 'dashboard' && (
             <div className="space-y-4 sm:space-y-5">
               <section className="grid gap-4 xl:grid-cols-[1.45fr_.75fr]">
                 <div className="relative overflow-hidden rounded-[30px] border border-white/70 bg-gradient-to-br from-white via-white to-[#eef2ff] p-5 shadow-[0_20px_55px_rgba(71,85,105,0.10)] sm:p-7">
@@ -677,7 +681,7 @@ export default function App() {
                     <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Demografía infantil / juvenil</div><h2 className="mt-1 text-base font-black text-slate-950">Edades de hijos · 3 a 18 años</h2></div>
                     <div className="text-right text-[9px] font-semibold leading-4 text-slate-400">Sin fecha: {childAgeMetrics.missing}<br/>Fuera 3–18: {childAgeMetrics.outside}</div>
                   </div>
-                  <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-16">
+                  <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-8">
                     {childAgeMetrics.rows.map((item)=>{
                       const max=Math.max(1,...childAgeMetrics.rows.map((row)=>row.count));
                       const height=Math.max(8,(item.count/max)*76);
@@ -723,19 +727,6 @@ export default function App() {
             </div>
           )}
 
-me="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {[...families].sort((a,b)=>b.registrationDate.localeCompare(a.registrationDate)).slice(0,4).map((family)=>(
-                    <button key={family.id} onClick={()=>setSelected(family)} className="rounded-xl bg-slate-50 p-3 text-left hover:bg-slate-100">
-                      <div className="text-xs font-extrabold">Familia {family.familyName}</div>
-                      <div className="mt-1 text-[10px] text-slate-400">{family.membershipNumber} · {new Date(family.registrationDate).toLocaleDateString('es-ES')}</div>
-                      <div className="mt-2 text-[10px] font-semibold text-slate-500">{family.students.length} alumno{family.students.length===1?'':'s'}</div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-
           {tab === 'families' && (
             <div className="space-y-4">
               <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_18px_50px_rgba(71,85,105,.09)] sm:p-6">
@@ -765,20 +756,11 @@ me="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                  {[
-                    ['status',status,(v:string)=>setStatus(v as any),[['all','Todos los estados'],['active','Activas'],['inactive','Inactivas']]],
-                    ['year',academicYearFilter,(v:string)=>setAcademicYearFilter(v),[['all','Todos los cursos'],...academicYears.map((y)=>[y,y])]],
-                    ['stage',stageFilter,(v:string)=>setStageFilter(v),[['all','Todas las etapas'],['infantil','Infantil'],['primaria','Primaria'],['secundaria','ESO'],['bachillerato','Bachillerato']]],
-                    ['quality',qualityFilter,(v:string)=>setQualityFilter(v as any),[['all','Todas las fichas'],['incomplete','Datos incompletos']]],
-                  ].map(([id,value,setter,options]:any)=>(
-                    <select key={id} value={value} onChange={(e)=>setter(e.target.value)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600 outline-none focus:border-indigo-300">
-                      {options.map(([v,l]:any)=><option key={v} value={v}>{l}</option>)}
-                    </select>
-                  ))}
-                  <div className="flex gap-2">
-                    <select value={sortBy} onChange={(e)=>setSortBy(e.target.value as any)} className="min-h-10 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="familyName">Orden: Familia</option><option value="membershipNumber">Orden: Socio</option><option value="registrationDate">Orden: Alta</option><option value="studentsCount">Orden: Nº alumnos</option></select>
-                    <button type="button" onClick={()=>setSortOrder(v=>v==='asc'?'desc':'asc')} className="min-h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 shadow-sm">{sortOrder==='asc'?'↑':'↓'}</button>
-                  </div>
+                  <select value={status} onChange={(e)=>setStatus(e.target.value as any)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todos los estados</option><option value="active">Activas</option><option value="inactive">Inactivas</option></select>
+                  <select value={academicYearFilter} onChange={(e)=>setAcademicYearFilter(e.target.value)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todos los cursos</option>{academicYears.map((year)=><option key={year} value={year}>{year}</option>)}</select>
+                  <select value={stageFilter} onChange={(e)=>setStageFilter(e.target.value)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todas las etapas</option><option value="infantil">Infantil</option><option value="primaria">Primaria</option><option value="secundaria">ESO</option><option value="bachillerato">Bachillerato</option></select>
+                  <select value={qualityFilter} onChange={(e)=>setQualityFilter(e.target.value as any)} className="min-h-10 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="all">Todas las fichas</option><option value="incomplete">Datos incompletos</option></select>
+                  <div className="flex gap-2"><select value={sortBy} onChange={(e)=>setSortBy(e.target.value as any)} className="min-h-10 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600"><option value="familyName">Orden: Familia</option><option value="membershipNumber">Orden: Socio</option><option value="registrationDate">Orden: Alta</option><option value="studentsCount">Orden: Nº alumnos</option></select><button type="button" onClick={()=>setSortOrder(v=>v==='asc'?'desc':'asc')} className="min-h-10 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-600 shadow-sm">{sortOrder==='asc'?'↑':'↓'}</button></div>
                 </div>
               </section>
 
@@ -788,9 +770,7 @@ me="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
                 <CompactFamilyList families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={80}/>
               ) : (
                 <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
-                  <div className="hidden grid-cols-[110px_1.3fr_1fr_120px_40px] gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-3 text-[9px] font-black uppercase tracking-[.14em] text-slate-400 md:grid">
-                    <span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/>
-                  </div>
+                  <div className="hidden grid-cols-[110px_1.3fr_1fr_120px_40px] gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-3 text-[9px] font-black uppercase tracking-[.14em] text-slate-400 md:grid"><span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/></div>
                   <div className="divide-y divide-slate-100">
                     {filtered.map((family)=>{
                       const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
