@@ -15,12 +15,12 @@ export function getFamilyDataIssues(family: Family): DataIssue[] {
 
   if (!family.guardians.length) issues.push({ code:'guardian', label:'Sin adulto responsable', level:'important' });
   if (main && !main.phone && !main.email) issues.push({ code:'contact', label:'Contacto principal sin teléfono ni correo', level:'important' });
-  if (!family.address?.street || !family.address?.city || !family.address?.postalCode) issues.push({ code:'address', label:'Domicilio incompleto', level:'recommended' });
+  if (!family.address?.street || !family.address?.city) issues.push({ code:'address', label:'Domicilio sin completar', level:'recommended' });
   if (!family.students.length) issues.push({ code:'students', label:'Sin alumnos/as registrados', level:'recommended' });
 
   family.students.forEach((student) => {
     if (!student.birthDateDDMMAAAA) {
-      issues.push({ code:`birth-${student.id}`, label:`${student.firstName || 'Alumno/a'} sin fecha de nacimiento`, level:'important' });
+      issues.push({ code:`birth-${student.id}`, label:`${student.firstName || 'Alumno/a'} sin fecha de nacimiento`, level:'recommended' });
     }
   });
 
