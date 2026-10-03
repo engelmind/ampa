@@ -25,13 +25,10 @@ export interface PdfArtifact {
 
 export type ReportKind =
   | 'family-census'
-  | 'active-families'
-  | 'inactive-families'
-  | 'students'
+  | 'compact-family-list'
   | 'students-by-course'
   | 'guardians'
   | 'incomplete'
-  | 'course-history'
   | 'compact-family-cards'
   | 'sensitive-needs';
 
@@ -72,7 +69,7 @@ function drawReportHeader(doc: jsPDF, options: PdfReportOptions, title: string, 
   doc.setFont('helvetica','normal');
   doc.setFontSize(9);
   doc.setTextColor(100,116,139);
-  doc.text(`${options.schoolName || 'Colegio San Agustín Granada'} · Curso ${options.academicYear}`,14,23);
+  doc.text(`${options.schoolName || 'Colegio Santo Tomás de Villanueva'} · Curso ${options.academicYear}`,14,23);
 
   doc.setFont('helvetica','bold');
   doc.setFontSize(11);
@@ -256,24 +253,54 @@ function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):
   return artifact(doc,`fichas_familiares_compactas_${settings.activeAcademicYear.replace('/','-')}.pdf`,'Fichas familiares compactas',`${families.length} familias · 8 fichas por página`);
 }
 
+function createCompactFamilyListPdf(families:Family[],settings:SystemSettings):PdfArtifact{
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const opts:PdfReportOptions={academicYear:settings.activeAcademicYear,schoolName:settings.schoolName,associationName:settings.associationName};
+  drawReportHeader(doc,opts,'Lista compacta de familias',`${families.length} familias · una línea por familia`);
+
+  const rows=families.map((family)=>{
+    const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
+    const studentNames=family.students.map((s)=>`${s.firstName} ${s.lastName}`).join(' · ');
+    return [
+      family.membershipNumber,
+      family.familyName,
+      main?.fullName || 'Sin contacto',
+      main?.phone || '',
+      main?.email || '',
+      studentNames || 'Sin alumnos',
+      family.isActiveThisYear ? 'ACTIVA' : 'INACTIVA',
+    ];
+  });
+
+  autoTable(doc,{
+    startY:39,
+    head:[['SOCIO','FAMILIA','CONTACTO','TELÉFONO','EMAIL','ALUMNOS','ESTADO']],
+    body:rows,
+    theme:'plain',
+    headStyles:{fillColor:[30,41,59],textColor:[255,255,255],fontStyle:'bold',fontSize:6.2,cellPadding:1.4},
+    bodyStyles:{fontSize:5.7,cellPadding:1.15,textColor:[30,41,59],valign:'middle',lineColor:[226,232,240],lineWidth:{bottom:.1}},
+    alternateRowStyles:{fillColor:[248,250,252]},
+    columnStyles:{
+      0:{cellWidth:22,fontStyle:'bold'},
+      1:{cellWidth:42,fontStyle:'bold'},
+      2:{cellWidth:44},
+      3:{cellWidth:28},
+      4:{cellWidth:62},
+      5:{cellWidth:'auto'},
+      6:{cellWidth:23,halign:'center',fontStyle:'bold'},
+    },
+    margin:{left:8,right:8,bottom:11},
+  });
+  addFooter(doc,'Lista compacta de familias');
+  return artifact(doc,`lista_compacta_familias_${settings.activeAcademicYear.replace('/','-')}.pdf`,'Lista compacta de familias',`${families.length} familias`);
+}
+
 export function createReportPdfArtifact(kind:ReportKind,families:Family[],settings:SystemSettings):PdfArtifact{
   const opts:PdfReportOptions={academicYear:settings.activeAcademicYear,schoolName:settings.schoolName,associationName:settings.associationName};
-  const active=families.filter((f)=>f.isActiveThisYear);
-  const inactive=families.filter((f)=>!f.isActiveThisYear);
 
   if(kind==='family-census') return createFamiliesPdfArtifact(families,{...opts,title:'Censo de familias',filterLabel:`${families.length} familias`});
-  if(kind==='active-families') return createFamiliesPdfArtifact(active,{...opts,title:'Familias activas',filterLabel:`${active.length} familias con cuota actual pagada`});
-  if(kind==='inactive-families') return createFamiliesPdfArtifact(inactive,{...opts,title:'Familias inactivas',filterLabel:`${inactive.length} familias con cuota actual pendiente`});
+  if(kind==='compact-family-list') return createCompactFamilyListPdf(families,settings);
   if(kind==='compact-family-cards') return createCompactFamilyCardsPdf(families,settings);
-
-  if(kind==='students'){
-    const rows=families.flatMap((f)=>f.students.map((s)=>[
-      `${s.firstName} ${s.lastName}`,f.familyName,
-      s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),
-      studentCourseLabel(s,settings.activeAcademicYear),s.groupLetter||'',f.isActiveThisYear?'ACTIVA':'INACTIVA'
-    ]));
-    return tableArtifact('Listado de alumnos',`alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','F. NAC.','CURSO','GRUPO','FAMILIA'],rows,opts,{0:{cellWidth:48},1:{cellWidth:43},2:{cellWidth:24},3:{cellWidth:36},4:{cellWidth:18},5:{cellWidth:25}});
-  }
 
   if(kind==='students-by-course'){
     const data=families.flatMap((f)=>f.students.map((s)=>({
@@ -282,35 +309,59 @@ export function createReportPdfArtifact(kind:ReportKind,families:Family[],settin
         : null
     })))
       .sort((a,b)=>(a.c?.ageInAcademicYear ?? 999)-(b.c?.ageInAcademicYear ?? 999) || a.s.lastName.localeCompare(b.s.lastName,'es'));
-    const rows=data.map(({f,s,c})=>[c?.fullDisplay || 'Sin curso asignado',`${s.firstName} ${s.lastName}`,f.familyName,s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),s.groupLetter||'']);
-    return tableArtifact('Alumnos por curso',`alumnos_por_curso_${settings.activeAcademicYear.replace('/','-')}.pdf`,['CURSO','ALUMNO/A','FAMILIA','F. NAC.','GRUPO'],rows,opts,{0:{cellWidth:38,fontStyle:'bold'},1:{cellWidth:55},2:{cellWidth:52},3:{cellWidth:28},4:{cellWidth:20}});
+    const rows=data.map(({f,s,c})=>[
+      c?.fullDisplay || 'Sin curso asignado',
+      `${s.firstName} ${s.lastName}`,
+      f.familyName,
+      s.birthDateDDMMAAAA?parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay:String(s.birthYear||''),
+      s.groupLetter||'',
+      f.isActiveThisYear?'ACTIVA':'INACTIVA',
+    ]);
+    return tableArtifact(
+      'Alumnado por curso',
+      `alumnado_por_curso_${settings.activeAcademicYear.replace('/','-')}.pdf`,
+      ['CURSO','ALUMNO/A','FAMILIA','F. NAC.','GRUPO','FAMILIA'],
+      rows,opts,
+      {0:{cellWidth:38,fontStyle:'bold'},1:{cellWidth:54},2:{cellWidth:50},3:{cellWidth:27},4:{cellWidth:18},5:{cellWidth:25}}
+    );
   }
 
   if(kind==='guardians'){
     const rows=families.flatMap((f)=>f.guardians.map((g)=>[
       g.fullName,f.familyName,g.relationship.replace('_',' '),g.phone||'',g.email||'',g.isMainContact?'Principal':''
     ]));
-    return tableArtifact('Tutores y contactos',`tutores_contactos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['TUTOR/A','FAMILIA','RELACIÓN','TELÉFONO','EMAIL','CONTACTO'],rows,opts,{0:{cellWidth:50},1:{cellWidth:45},2:{cellWidth:27},3:{cellWidth:32},4:{cellWidth:75},5:{cellWidth:24}});
+    return tableArtifact(
+      'Tutores y contactos',
+      `tutores_contactos_${settings.activeAcademicYear.replace('/','-')}.pdf`,
+      ['TUTOR/A','FAMILIA','RELACIÓN','TELÉFONO','EMAIL','CONTACTO'],
+      rows,opts,{0:{cellWidth:50},1:{cellWidth:45},2:{cellWidth:27},3:{cellWidth:32},4:{cellWidth:75},5:{cellWidth:24}}
+    );
   }
-
-
 
   if(kind==='incomplete'){
     const incomplete=families.filter((f)=>getFamilyDataIssues(f).length);
-    const rows=incomplete.map((f)=>[f.membershipNumber,f.familyName,getFamilyDataIssues(f).map((i)=>i.label).join('\n'),f.isActiveThisYear?'ACTIVA':'INACTIVA']);
-    return tableArtifact('Fichas incompletas',`fichas_incompletas_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','DATOS A REVISAR','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:52},2:{cellWidth:'auto'},3:{cellWidth:28}});
-  }
-
-  if(kind==='course-history'){
-    const rows=families.map((f)=>[f.membershipNumber,f.familyName,(f.activeYears||[]).join(', ')||'Sin histórico',f.registrationAcademicYear||'',f.isActiveThisYear?'ACTIVA':'PENDIENTE']);
-    return tableArtifact('Histórico de cursos',`historico_cursos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['SOCIO','FAMILIA','CURSOS HISTÓRICOS','CURSO ALTA','ESTADO'],rows,opts,{0:{cellWidth:27},1:{cellWidth:55},2:{cellWidth:'auto'},3:{cellWidth:33},4:{cellWidth:28}});
+    const rows=incomplete.map((f)=>[
+      f.membershipNumber,f.familyName,getFamilyDataIssues(f).map((i)=>i.label).join('\n'),f.isActiveThisYear?'ACTIVA':'INACTIVA'
+    ]);
+    return tableArtifact(
+      'Fichas incompletas',
+      `fichas_incompletas_${settings.activeAcademicYear.replace('/','-')}.pdf`,
+      ['SOCIO','FAMILIA','DATOS A REVISAR','ESTADO'],
+      rows,opts,{0:{cellWidth:27},1:{cellWidth:52},2:{cellWidth:'auto'},3:{cellWidth:28}}
+    );
   }
 
   if(kind==='sensitive-needs'){
     const rows=families.flatMap((f)=>f.students.filter((s)=>s.allergies||s.specialNeeds).map((s)=>[
       `${s.firstName} ${s.lastName}`,f.familyName,studentCourseLabel(s,settings.activeAcademicYear),s.allergies||'',s.specialNeeds||''
     ]));
-    return tableArtifact('Alergias y necesidades especiales',`datos_restringidos_alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,['ALUMNO/A','FAMILIA','CURSO','ALERGIAS / INTOLERANCIAS','NECESIDADES'],rows,opts,{0:{cellWidth:50},1:{cellWidth:44},2:{cellWidth:37},3:{cellWidth:72},4:{cellWidth:74}},'Acceso restringido · Datos especialmente sensibles');
+    return tableArtifact(
+      'Alergias y necesidades especiales',
+      `datos_restringidos_alumnos_${settings.activeAcademicYear.replace('/','-')}.pdf`,
+      ['ALUMNO/A','FAMILIA','CURSO','ALERGIAS / INTOLERANCIAS','NECESIDADES'],
+      rows,opts,{0:{cellWidth:50},1:{cellWidth:44},2:{cellWidth:37},3:{cellWidth:72},4:{cellWidth:74}},
+      'Acceso restringido · Datos especialmente sensibles'
+    );
   }
 
   return createFamiliesPdfArtifact(families,opts);
