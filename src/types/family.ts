@@ -84,7 +84,7 @@ export interface SystemSettings {
   contactEmail: string;
 }
 
-export type MainViewTab = 'dashboard' | 'families' | 'courses' | 'settings';
+export type MainViewTab = 'dashboard' | 'families' | 'settings';
 
 export interface FamilyFilters {
   searchQuery: string;
@@ -92,7 +92,7 @@ export interface FamilyFilters {
   stageFilter: 'all' | EducationalStage;
   sortBy: 'membershipNumber' | 'familyName' | 'studentsCount' | 'registrationDate';
   sortOrder: 'asc' | 'desc';
-  viewMode: 'cards' | 'table';
+  viewMode: 'cards' | 'table' | 'list';
   itemsPerPage: number;
   currentPage: number;
 }
