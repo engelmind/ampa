@@ -157,7 +157,7 @@ function normalizeGeneralSettings(raw:any) {
     contactEmail: String(source.contactEmail || ''),
   };
 }
-async function loadFamilies() {
+async function loadFamilies(includeSensitive = false) {
   const [families, guardians, students, renewals] = await Promise.all([
     sql`select * from families order by family_name`,
     sql`select * from guardians order by created_at`,
@@ -178,7 +178,7 @@ async function loadFamilies() {
     students:students.filter((s:any)=>s.family_id===f.id).map((s:any)=>({
       id:s.id,firstName:s.first_name,lastName:s.last_name,dni:s.dni||'',birthDateDDMMAAAA:ddmmyyyyFromDb(s.birth_date),
       birthYear:birthYearFromDb(s.birth_date,s.birth_year),courseOffset:s.course_offset,groupLetter:s.group_letter||'',academicYear:s.academic_year,
-      school:s.school||'',className:s.class_name||'',allergies:s.allergies||'',specialNeeds:s.special_needs||''
+      school:s.school||'',className:s.class_name||'',allergies:includeSensitive?(s.allergies||''):'',specialNeeds:includeSensitive?(s.special_needs||''):''
     }))
   }));
 }
@@ -362,7 +362,8 @@ Deno.serve(async (req: Request) => {
     }
 
     if (path === '/families' && req.method === 'GET') {
-      await requireUser(req); return reply({families:await loadFamilies()});
+      const u=await requireUser(req);
+      return reply({families:await loadFamilies(u.role==='superadmin'||u.role==='admin')});
     }
     if (path === '/families' && req.method === 'POST') {
       const u = await requireRole(req,['superadmin','admin']); const body = await readBody(req);
