@@ -543,11 +543,11 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="ampa-app-shell min-h-screen text-slate-900">
       {reportsOpen && <ReportsCenter allFamilies={families} filteredFamilies={filtered} settings={settings} role={currentUser.role} onPreview={(artifact)=>setReportPreview(artifact)} onClose={()=>setReportsOpen(false)}/>}
       {reportPreview && <PdfPreviewModal artifact={reportPreview} onClose={()=>setReportPreview(null)}/>} 
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+      <header className="ampa-topbar sticky top-0 z-30 border-b border-white/60 bg-white/75 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-4 px-4 py-3.5 sm:px-6 lg:px-8">
           <AmpaLogo className="h-11 w-auto max-w-[210px]" />
           <div className="hidden h-8 w-px bg-slate-200 sm:block" />
           <div className="min-w-0 flex-1">
@@ -558,21 +558,21 @@ export default function App() {
             <div className="text-xs font-bold">{currentUser.name}</div>
             <div className="text-[10px] uppercase tracking-wider text-slate-400">{currentUser.role}</div>
           </div>
-          <button type="button" onClick={handleLogout} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={handleLogout} className="ampa-soft-button flex min-h-11 items-center gap-2 rounded-2xl px-3.5 text-xs font-bold text-slate-700">
             <LogOut size={16}/><span className="hidden sm:inline">Salir</span>
           </button>
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[210px_1fr]">
-        <aside className="lg:sticky lg:top-24 lg:self-start">
-          <nav className="grid grid-cols-3 gap-2 lg:grid-cols-1">
+      <div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[232px_1fr] lg:px-8">
+        <aside className="ampa-sidebar lg:sticky lg:top-24 lg:self-start">
+          <nav className="grid grid-cols-3 gap-2 rounded-3xl border border-white/70 bg-white/72 p-2 shadow-[0_18px_55px_-28px_rgba(30,41,59,.32)] backdrop-blur-xl lg:grid-cols-1">
             {[
               ['dashboard', 'Panel', LayoutDashboard],
               ['families', 'Directorio', Users],
               ['settings', 'Ajustes', Settings],
             ].map(([id, label, Icon]: any) => (
-              <button key={id} type="button" onClick={() => setTab(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold lg:justify-start ${tab === id ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+              <button key={id} type="button" onClick={() => setTab(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold lg:justify-start ${tab === id ? 'ampa-nav-active text-white shadow-lg' : 'border border-transparent bg-white/55 text-slate-600 hover:border-white hover:bg-white hover:text-slate-900'}`}>
                 <Icon size={17}/><span>{label}</span>
               </button>
             ))}
@@ -582,7 +582,7 @@ export default function App() {
         <main className="min-w-0">
           {tab === 'dashboard' && (
             <div className="space-y-5">
-              <section className="overflow-hidden rounded-3xl bg-slate-950 text-white">
+              <section className="ampa-hero relative overflow-hidden rounded-[2rem] text-white shadow-[0_28px_80px_-36px_rgba(30,41,59,.55)]">
                 <div className="grid gap-7 p-6 lg:grid-cols-[1.02fr_1.28fr] lg:p-7">
                   <div className="flex flex-col justify-between">
                     <div>
@@ -591,9 +591,9 @@ export default function App() {
                       <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Una lectura inmediata del tamaño de la asociación, las familias al día y la composición de su comunidad.</p>
                     </div>
                     <div className="mt-6 flex flex-wrap gap-2">
-                      {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold hover:bg-rose-500"><Plus size={16}/> Nueva familia</button>}
-                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><Clock3 size={16}/> Familias inactivas</button>
-                      <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-bold"><FileWarning size={16}/> Revisar fichas</button>
+                      {canEdit && <button type="button" onClick={()=>setEditing(emptyFamily(nextMembershipNumber(families)))} className="ampa-primary-button flex min-h-11 items-center gap-2 rounded-2xl px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
+                      <button type="button" onClick={()=>{setStatus('inactive');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 text-xs font-bold backdrop-blur transition hover:bg-white/15"><Clock3 size={16}/> Familias inactivas</button>
+                      <button type="button" onClick={()=>{setQualityFilter('incomplete');setTab('families');}} className="flex min-h-11 items-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 text-xs font-bold backdrop-blur transition hover:bg-white/15"><FileWarning size={16}/> Revisar fichas</button>
                     </div>
                   </div>
 
@@ -605,7 +605,7 @@ export default function App() {
                       </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Familias</span>
                           <Users size={17} className="text-slate-500"/>
@@ -614,7 +614,7 @@ export default function App() {
                         <div className="mt-2 text-xs text-slate-300">Familias socias actuales · {inactiveCount} históricas inactivas</div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Padres / tutores</span>
                           <UserRound size={17} className="text-slate-500"/>
@@ -623,7 +623,7 @@ export default function App() {
                         <div className="mt-2 text-xs text-slate-300">{activeCount ? (guardianCount / activeCount).toFixed(1) : '0.0'} adultos por familia</div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Hijos / alumnos</span>
                           <Baby size={17} className="text-slate-500"/>
@@ -632,7 +632,7 @@ export default function App() {
                         <div className="mt-2 text-xs text-slate-300">{averageStudents} hijos por familia</div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="ampa-hero-card rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cuota actual</span>
                           <CheckCircle2 size={17} className="text-slate-500"/>
@@ -641,7 +641,7 @@ export default function App() {
                           <div className="text-4xl font-black">{activeRate}%</div>
                           <div className="pb-1 text-right text-[10px] leading-4 text-slate-400">{activeCount} activas<br/>{inactiveCount} históricas</div>
                         </div>
-                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-rose-500" style={{width:`${activeRate}%`}}/></div>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10"><div className="ampa-progress h-full rounded-full" style={{width:`${activeRate}%`}}/></div>
                       </div>
                     </div>
                   </div>
@@ -656,7 +656,7 @@ export default function App() {
                   ['Sin curso',unassignedCourseCount,AlertTriangle,'Sin fecha de nacimiento'],
                   ['Fichas operativas',`${completeRate}%`,CheckCircle2,'Responsable y contacto'],
                 ].map(([label,value,Icon,hint]:any)=>(
-                  <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div key={label} className="ampa-kpi-card rounded-3xl border border-white/80 bg-white/80 p-4 backdrop-blur">
                     <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{label}</span><Icon size={17} className="text-slate-400"/></div>
                     <div className="mt-4 text-3xl font-black tracking-tight">{value}</div>
                     <div className="mt-1 text-[11px] text-slate-400">{hint}</div>
@@ -672,7 +672,7 @@ export default function App() {
                       const max=Math.max(1,...parentAgeBands.map((item)=>item.count));
                       return <div key={band.label} className="grid grid-cols-[90px_1fr_34px] items-center gap-3">
                         <span className="text-xs font-bold text-slate-600">{band.label}</span>
-                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-900" style={{width:`${Math.max(4,(band.count/max)*100)}%`}}/></div>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="ampa-progress h-full rounded-full" style={{width:`${Math.max(4,(band.count/max)*100)}%`}}/></div>
                         <strong className="text-right text-xs">{band.count}</strong>
                       </div>;
                     })}
@@ -687,7 +687,7 @@ export default function App() {
                       const height=Math.max(8,(item.count/max)*70);
                       return <div key={item.age} className="flex min-w-0 flex-col items-center justify-end rounded-xl bg-slate-50 p-2">
                         <div className="text-xs font-black">{item.count}</div>
-                        <div className="mt-1 flex h-[72px] items-end"><div className="w-4 rounded-t bg-rose-500" style={{height:`${height}px`}}/></div>
+                        <div className="mt-1 flex h-[72px] items-end"><div className="ampa-bar w-4 rounded-t" style={{height:`${height}px`}}/></div>
                         <div className="mt-1 text-[10px] font-bold text-slate-500">{item.age} a.</div>
                       </div>;
                     })}
@@ -702,7 +702,7 @@ export default function App() {
                     {courseBreakdown.map((item)=>(
                       <div key={item.label} className="grid grid-cols-[110px_1fr_28px] items-center gap-3">
                         <div className="truncate text-xs font-bold text-slate-600">{item.label}</div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-slate-900" style={{width:`${Math.max(7,(item.count/maxCourseCount)*100)}%`}}/></div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="ampa-progress h-full rounded-full" style={{width:`${Math.max(7,(item.count/maxCourseCount)*100)}%`}}/></div>
                         <div className="text-right text-xs font-black">{item.count}</div>
                       </div>
                     ))}
@@ -721,7 +721,7 @@ export default function App() {
                     ].map(([label,value]:any)=>(
                       <div key={label}>
                         <div className="mb-1.5 flex justify-between text-xs"><span className="font-semibold text-slate-600">{label}</span><strong>{value}%</strong></div>
-                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-rose-500" style={{width:`${value}%`}}/></div>
+                        <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="ampa-progress h-full rounded-full" style={{width:`${value}%`}}/></div>
                       </div>
                     ))}
                   </div>
@@ -791,7 +791,7 @@ export default function App() {
                     <button type="button" onClick={()=>setDirectoryView('list')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='list'?'bg-white shadow-sm':'text-slate-500'}`}><Rows3 size={14}/> Lista</button>
                     <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold ${directoryView==='cards'?'bg-white shadow-sm':'text-slate-500'}`}><LayoutGrid size={14}/> Fichas</button>
                   </div>
-                  {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="flex min-h-11 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
+                  {canEdit && <button type="button" onClick={() => setEditing(emptyFamily(nextMembershipNumber(families)))} className="ampa-primary-button flex min-h-11 items-center gap-2 rounded-2xl px-4 text-xs font-bold text-white"><Plus size={16}/> Nueva familia</button>}
                 </div>
               </div>
 
