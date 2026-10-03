@@ -156,7 +156,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
                             {s.groupLetter && <div>Grupo: <strong>{s.groupLetter}</strong></div>}
                             {s.school && <div>Centro: <strong>{s.school}</strong></div>}
                           </div>
-                          {(s.allergies || s.specialNeeds) && (
+                          {canEdit && (s.allergies || s.specialNeeds) && (
                             <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
                               {s.allergies && <div className="rounded-xl bg-amber-50 p-2 text-[11px] text-amber-900"><strong>Alergias/intolerancias:</strong> {s.allergies}</div>}
                               {s.specialNeeds && <div className="rounded-xl bg-sky-50 p-2 text-[11px] text-sky-900"><strong>Necesidades:</strong> {s.specialNeeds}</div>}
