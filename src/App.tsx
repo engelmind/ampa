@@ -774,7 +774,7 @@ export default function App() {
               </section>
 
               {directoryView==='cards' ? (
-                <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={24}/>
+                <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={40}/>
               ) : directoryView==='list' ? (
                 <CompactFamilyList families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={80}/>
               ) : (
