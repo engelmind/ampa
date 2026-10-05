@@ -26,14 +26,17 @@ export function CompactFamilyGrid({families,academicYear,onSelect,pageSize=40}:P
   const visible=useMemo(()=>families.slice((page-1)*pageSize,page*pageSize),[families,page,pageSize]);
 
   return <div className="space-y-3">
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div
+      className="grid gap-3"
+      style={{gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 250px), 1fr))'}}
+    >
       {visible.map((family)=>{
         const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
         const issues=getFamilyDataIssues(family);
         const adults=family.guardians
           .map((g)=>`${g.fullName} (${relationshipShort(g.relationship)})`)
           .join(' · ');
-        return <button key={family.id} onClick={()=>onSelect(family)} className="group min-w-0 rounded-[24px] border border-white/70 bg-white/90 p-3.5 text-left shadow-[0_14px_36px_rgba(71,85,105,.07)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(71,85,105,.11)]">
+        return <button key={family.id} onClick={()=>onSelect(family)} className="group min-w-0 rounded-[22px] border border-white/70 bg-white/90 p-3 text-left shadow-[0_14px_36px_rgba(71,85,105,.07)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(71,85,105,.11)]">
           <div className="flex items-start gap-2">
             <div className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${family.isActiveThisYear?'bg-gradient-to-br from-emerald-400 to-cyan-400':'bg-gradient-to-br from-amber-400 to-orange-400'}`}/>
             <div className="min-w-0 flex-1">
