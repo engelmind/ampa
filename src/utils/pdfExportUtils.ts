@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import QRCode from 'qrcode';
-import { Family, SystemSettings } from '../types/family';
+import { EventDetail, Family, SystemSettings } from '../types/family';
 import { calculateStudentCourse, hasOfficialCurrentCourse } from './academicCourse';
 import { parseDDMMAAAA } from './dateUtils';
 import { getFamilyDataIssues } from './dataQuality';
@@ -147,6 +147,81 @@ export function createFamiliesPdfArtifact(families:Family[],options:PdfReportOpt
 
 export function generateFamiliesPdfReport(families:Family[],options:PdfReportOptions):void{
   downloadPdfArtifact(createFamiliesPdfArtifact(families,options));
+}
+
+
+const safeFilenamePart=(value:string)=>value
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/[^a-zA-Z0-9_-]+/g,'_')
+  .replace(/^_+|_+$/g,'')
+  .slice(0,70) || 'evento';
+
+export function createEventParticipantsPdfArtifact(event:EventDetail,families:Family[],settings:SystemSettings):PdfArtifact{
+  const attendingFamilies=new Set(event.familyIds);
+  const rows=event.attendees
+    .map((attendee)=>{
+      const family=families.find((f)=>f.id===attendee.familyId);
+      const guardian=attendee.personType==='guardian'
+        ? family?.guardians.find((g)=>g.id===attendee.personId)
+        : undefined;
+      const student=attendee.personType==='student'
+        ? family?.students.find((s)=>s.id===attendee.personId)
+        : undefined;
+      const role=guardian
+        ? guardian.relationship==='madre' ? 'Madre'
+          : guardian.relationship==='padre' ? 'Padre'
+          : guardian.relationship==='tutor_legal' ? 'Tutor/a legal'
+          : 'Adulto/a'
+        : student
+          ? studentCourseLabel(student,settings.activeAcademicYear)
+          : attendee.personType==='guardian' ? 'Adulto/a' : 'Hijo/a';
+      return {
+        familyName:family?.familyName || 'Familia no disponible',
+        membershipNumber:family?.membershipNumber || '',
+        participantName:attendee.participantName,
+        role,
+      };
+    })
+    .sort((a,b)=>
+      a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'})
+      || a.participantName.localeCompare(b.participantName,'es',{sensitivity:'base'})
+    )
+    .map((row,index)=>[
+      index+1,
+      '________',
+      row.membershipNumber,
+      row.familyName,
+      row.participantName,
+      row.role,
+    ]);
+
+  const opts:PdfReportOptions={
+    academicYear:settings.activeAcademicYear,
+    schoolName:settings.schoolName,
+    associationName:settings.associationName,
+  };
+  const date=event.eventDate
+    ? new Date(event.eventDate+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'})
+    : 'Sin fecha';
+  const familyCount=Array.from(attendingFamilies).length;
+  const title=`Participantes - ${event.title}`;
+  return tableArtifact(
+    title,
+    `participantes_${safeFilenamePart(event.title)}_${event.eventDate || 'sin_fecha'}.pdf`,
+    ['Nº','CONTROL','SOCIO','FAMILIA','PARTICIPANTE','TIPO / CURSO'],
+    rows,
+    opts,
+    {
+      0:{cellWidth:12,halign:'center'},
+      1:{cellWidth:24,halign:'center'},
+      2:{cellWidth:23,fontStyle:'bold'},
+      3:{cellWidth:52,fontStyle:'bold'},
+      4:{cellWidth:72},
+      5:{cellWidth:'auto'},
+    },
+    `${date} · ${familyCount} familias · ${rows.length} participantes`,
+    'landscape'
+  );
 }
 
 async function buildMembershipCardDoc(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'){
