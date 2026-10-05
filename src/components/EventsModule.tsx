@@ -1,15 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  CalendarDays, ChevronLeft, ImagePlus, Pencil, Plus, Save, Search, Trash2,
-  UserRound, Users, Baby, CheckCircle2, X, BarChart3, Percent
+  CalendarDays, ChevronLeft, FileDown, ImagePlus, Pencil, Plus, Save, Search, Trash2,
+  UserRound, Users, Baby, X, BarChart3, Percent
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
-import { EventDetail, EventSummary, Family } from '../types/family';
+import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
+import { createEventParticipantsPdfArtifact, downloadPdfArtifact } from '../utils/pdfExportUtils';
 
 interface Props {
   families: Family[];
   events: EventSummary[];
   totals: { activeFamilies: number; censusPeople: number };
+  settings: SystemSettings;
   canEdit: boolean;
   canDelete: boolean;
   onReload: () => Promise<void>;
@@ -32,6 +34,10 @@ const dateLabel = (iso:string) => {
 };
 
 const personKey=(type:'guardian'|'student',id:string)=>`${type}:${id}`;
+const familyMemberKeys=(family:Family)=>new Set([
+  ...family.guardians.map((guardian)=>personKey('guardian',guardian.id)),
+  ...family.students.map((student)=>personKey('student',student.id)),
+]);
 
 async function imageToDataUrl(file:File){
   if (!file.type.startsWith('image/')) throw new Error('Seleccione un archivo de imagen.');
@@ -59,7 +65,7 @@ async function imageToDataUrl(file:File){
   return canvas.toDataURL('image/jpeg',0.78);
 }
 
-export function EventsModule({families,events,totals,canEdit,canDelete,onReload,onNotify}:Props){
+export function EventsModule({families,events,totals,settings,canEdit,canDelete,onReload,onNotify}:Props){
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [detail,setDetail]=useState<EventDetail|null>(null);
   const [loadingDetail,setLoadingDetail]=useState(false);
@@ -70,6 +76,7 @@ export function EventsModule({families,events,totals,canEdit,canDelete,onReload,
   const [selectedPeople,setSelectedPeople]=useState<Record<string,Set<string>>>({});
   const [familyQuery,setFamilyQuery]=useState('');
   const [onlySelected,setOnlySelected]=useState(false);
+  const [editingAttendance,setEditingAttendance]=useState(false);
 
   const orderedEvents=useMemo(
     ()=>[...events].sort((a,b)=>b.eventDate.localeCompare(a.eventDate) || a.title.localeCompare(b.title,'es')),
@@ -96,6 +103,9 @@ export function EventsModule({families,events,totals,canEdit,canDelete,onReload,
       setDetail(response.event);
       setSelectedId(id);
       setSelectedFamilies(new Set(response.event.familyIds));
+      setEditingAttendance(response.event.familyIds.length === 0);
+      setFamilyQuery('');
+      setOnlySelected(false);
       const people:Record<string,Set<string>>={};
       for(const attendee of response.event.attendees){
         if(!people[attendee.familyId]) people[attendee.familyId]=new Set();
@@ -117,27 +127,42 @@ export function EventsModule({families,events,totals,canEdit,canDelete,onReload,
   },[events,selectedId]);
 
   const toggleFamily=(familyId:string)=>{
-    setSelectedFamilies(prev=>{
-      const next=new Set(prev);
-      if(next.has(familyId)){
+    const family=families.find((item)=>item.id===familyId);
+    if(!family) return;
+    const alreadySelected=selectedFamilies.has(familyId);
+    if(alreadySelected){
+      setSelectedFamilies(prev=>{
+        const next=new Set(prev);
         next.delete(familyId);
-        setSelectedPeople(current=>{
-          const clone={...current};
-          delete clone[familyId];
-          return clone;
-        });
-      }else next.add(familyId);
-      return next;
-    });
+        return next;
+      });
+      setSelectedPeople(current=>{
+        const clone={...current};
+        delete clone[familyId];
+        return clone;
+      });
+      return;
+    }
+    setSelectedFamilies(prev=>new Set(prev).add(familyId));
+    setSelectedPeople(current=>({...current,[familyId]:familyMemberKeys(family)}));
   };
 
   const togglePerson=(familyId:string,key:string)=>{
-    setSelectedFamilies(prev=>new Set(prev).add(familyId));
     setSelectedPeople(prev=>{
       const next={...prev};
       const set=new Set(next[familyId]||[]);
       if(set.has(key)) set.delete(key); else set.add(key);
-      next[familyId]=set;
+      if(set.size===0){
+        delete next[familyId];
+        setSelectedFamilies(current=>{
+          const familiesNext=new Set(current);
+          familiesNext.delete(familyId);
+          return familiesNext;
+        });
+      }else{
+        next[familyId]=set;
+        setSelectedFamilies(current=>new Set(current).add(familyId));
+      }
       return next;
     });
   };
@@ -210,6 +235,14 @@ export function EventsModule({families,events,totals,canEdit,canDelete,onReload,
     }
   };
 
+  const downloadParticipantsPdf=()=>{
+    if(!detail || !detail.attendees.length){
+      onNotify('info','Sin participantes','Guarde al menos un participante antes de generar la lista.');
+      return;
+    }
+    downloadPdfArtifact(createEventParticipantsPdfArtifact(detail,families,settings));
+  };
+
   const acceptImage=async(file?:File)=>{
     if(!file || !draft) return;
     try{
@@ -261,53 +294,117 @@ export function EventsModule({families,events,totals,canEdit,canDelete,onReload,
         </div>
       </section>
 
-      <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Inscripción y asistencia</div>
-            <h2 className="mt-1 text-xl font-black text-slate-950">Familias participantes</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-500">Marque la familia y, dentro de ella, las personas concretas que participan.</p>
+      {!editingAttendance ? (
+        <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Participación guardada</div>
+              <h2 className="mt-1 text-xl font-black text-slate-950">Familias y asistentes</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Vista operativa del evento: solo aparecen las familias que participan y sus miembros asistentes.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!!detail.attendees.length&&<button type="button" onClick={downloadParticipantsPdf} className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 shadow-sm"><FileDown size={15}/> Lista PDF</button>}
+              {canEdit&&<button type="button" onClick={()=>setEditingAttendance(true)} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white"><Pencil size={15}/> Editar participación</button>}
+            </div>
           </div>
-          {canEdit&&<button type="button" disabled={savingAttendance} onClick={()=>void saveAttendance()} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white disabled:opacity-50"><Save size={15}/>{savingAttendance?'Guardando…':'Guardar participación'}</button>}
-        </div>
-        <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <label className="relative"><Search size={16} className="absolute left-4 top-3.5 text-slate-400"/><input value={familyQuery} onChange={e=>setFamilyQuery(e.target.value)} placeholder="Buscar familia o miembro…" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none focus:border-indigo-300"/></label>
-          <label className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={onlySelected} onChange={e=>setOnlySelected(e.target.checked)}/> Solo participantes</label>
-        </div>
 
-        <div className="mt-4 space-y-2">
-          {filteredFamilies.map(family=>{
-            const checked=selectedFamilies.has(family.id);
-            const people=selectedPeople[family.id]||new Set<string>();
-            return <div key={family.id} className={`rounded-[22px] border p-3 transition ${checked?'border-indigo-200 bg-indigo-50/45':'border-slate-100 bg-slate-50/65'}`}>
-              <div className="flex items-center gap-3">
-                <input disabled={!canEdit} type="checkbox" checked={checked} onChange={()=>toggleFamily(family.id)} className="h-4 w-4 rounded border-slate-300"/>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><strong className="truncate text-xs text-slate-800">Familia {family.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{family.membershipNumber}</span></div>
-                  <div className="mt-0.5 text-[10px] text-slate-400">{family.guardians.length} adulto(s) · {family.students.length} hijo(s) · {people.size} participante(s)</div>
-                </div>
-                <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
-              </div>
-              {checked&&<div className="mt-3 grid gap-2 border-t border-indigo-100 pt-3 md:grid-cols-2">
-                <div className="rounded-2xl bg-white/80 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><UserRound size={13}/> Padres / tutores</div>
-                  <div className="space-y-1.5">
-                    {family.guardians.map(g=>{const key=personKey('guardian',g.id);return <label key={g.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{g.fullName}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">{g.relationship.replace('_',' ')}</span></label>})}
-                    {!family.guardians.length&&<div className="text-[10px] text-slate-400">Sin adultos registrados.</div>}
+          <div className="mt-5 space-y-3">
+            {Array.from(selectedFamilies)
+              .map((familyId)=>families.find((family)=>family.id===familyId))
+              .filter((family):family is Family=>Boolean(family))
+              .sort((a,b)=>a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'}))
+              .map((family)=>{
+                const keys=selectedPeople[family.id]||new Set<string>();
+                const guardians=family.guardians.filter((guardian)=>keys.has(personKey('guardian',guardian.id)));
+                const students=family.students.filter((student)=>keys.has(personKey('student',student.id)));
+                return <div key={family.id} className="rounded-[24px] border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong className="text-sm font-black text-slate-900">Familia {family.familyName}</strong>
+                        <span className="font-mono text-[9px] font-bold text-slate-400">{family.membershipNumber}</span>
+                      </div>
+                      <div className="mt-1 text-[10px] font-semibold text-slate-400">{keys.size} participante{keys.size===1?'':'s'}</div>
+                    </div>
+                    <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">{keys.size}</span>
                   </div>
-                </div>
-                <div className="rounded-2xl bg-white/80 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><Baby size={13}/> Hijos/as</div>
-                  <div className="space-y-1.5">
-                    {family.students.map(s=>{const key=personKey('student',s.id);return <label key={s.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{s.firstName} {s.lastName}</span><span className="ml-auto shrink-0 text-[9px] text-slate-400">{s.className||'Sin curso'}</span></label>})}
-                    {!family.students.length&&<div className="text-[10px] text-slate-400">Sin hijos/as registrados.</div>}
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    <div className="rounded-2xl bg-white p-3 shadow-sm">
+                      <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><UserRound size={13}/> Padres / tutores</div>
+                      <div className="space-y-1.5">
+                        {guardians.map((guardian)=><div key={guardian.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><span className="h-1.5 w-1.5 rounded-full bg-indigo-400"/><span className="truncate">{guardian.fullName}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">{guardian.relationship.replace('_',' ')}</span></div>)}
+                        {!guardians.length&&<div className="text-[10px] text-slate-400">No participa ningún adulto.</div>}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3 shadow-sm">
+                      <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><Baby size={13}/> Hijos/as</div>
+                      <div className="space-y-1.5">
+                        {students.map((student)=><div key={student.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><span className="h-1.5 w-1.5 rounded-full bg-rose-400"/><span className="truncate">{student.firstName} {student.lastName}</span><span className="ml-auto shrink-0 text-[9px] text-slate-400">{student.className||'Sin curso'}</span></div>)}
+                        {!students.length&&<div className="text-[10px] text-slate-400">No participa ningún hijo/a.</div>}
+                      </div>
+                    </div>
                   </div>
+                </div>;
+              })}
+            {!selectedFamilies.size&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-8 text-center">
+              <div className="text-sm font-black text-slate-500">Aún no hay participación guardada</div>
+              <div className="mt-1 text-xs text-slate-400">Seleccione las familias y asistentes para comenzar.</div>
+              {canEdit&&<button type="button" onClick={()=>setEditingAttendance(true)} className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-xs font-extrabold text-white">Configurar participación</button>}
+            </div>}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Editar participación</div>
+              <h2 className="mt-1 text-xl font-black text-slate-950">Seleccionar familias y asistentes</h2>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Al marcar una familia se seleccionan automáticamente todos sus miembros. Después solo tiene que desmarcar a quien no participe.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {!!detail.familyIds.length&&<button type="button" onClick={()=>{void loadDetail(detail.id);}} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600">Cancelar cambios</button>}
+              {canEdit&&<button type="button" disabled={savingAttendance} onClick={()=>void saveAttendance()} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white disabled:opacity-50"><Save size={15}/>{savingAttendance?'Guardando…':'Guardar participación'}</button>}
+            </div>
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
+            <label className="relative"><Search size={16} className="absolute left-4 top-3.5 text-slate-400"/><input value={familyQuery} onChange={e=>setFamilyQuery(e.target.value)} placeholder="Buscar familia o miembro…" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none focus:border-indigo-300"/></label>
+            <label className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={onlySelected} onChange={e=>setOnlySelected(e.target.checked)}/> Solo seleccionadas</label>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {filteredFamilies.map(family=>{
+              const checked=selectedFamilies.has(family.id);
+              const people=selectedPeople[family.id]||new Set<string>();
+              return <div key={family.id} className={`rounded-[22px] border p-3 transition ${checked?'border-indigo-200 bg-indigo-50/45':'border-slate-100 bg-slate-50/65'}`}>
+                <div className="flex items-center gap-3">
+                  <input disabled={!canEdit} type="checkbox" checked={checked} onChange={()=>toggleFamily(family.id)} className="h-4 w-4 rounded border-slate-300"/>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2"><strong className="truncate text-xs text-slate-800">Familia {family.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{family.membershipNumber}</span></div>
+                    <div className="mt-0.5 text-[10px] text-slate-400">{family.guardians.length} adulto(s) · {family.students.length} hijo(s) · {people.size} participante(s)</div>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
                 </div>
-              </div>}
-            </div>;
-          })}
-        </div>
-      </section>
+                {checked&&<div className="mt-3 grid gap-2 border-t border-indigo-100 pt-3 md:grid-cols-2">
+                  <div className="rounded-2xl bg-white/80 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><UserRound size={13}/> Padres / tutores</div>
+                    <div className="space-y-1.5">
+                      {family.guardians.map(g=>{const key=personKey('guardian',g.id);return <label key={g.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{g.fullName}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">{g.relationship.replace('_',' ')}</span></label>})}
+                      {!family.guardians.length&&<div className="text-[10px] text-slate-400">Sin adultos registrados.</div>}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-white/80 p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><Baby size={13}/> Hijos/as</div>
+                    <div className="space-y-1.5">
+                      {family.students.map(s=>{const key=personKey('student',s.id);return <label key={s.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{s.firstName} {s.lastName}</span><span className="ml-auto shrink-0 text-[9px] text-slate-400">{s.className||'Sin curso'}</span></label>})}
+                      {!family.students.length&&<div className="text-[10px] text-slate-400">Sin hijos/as registrados.</div>}
+                    </div>
+                  </div>
+                </div>}
+              </div>;
+            })}
+          </div>
+        </section>
+      )}
 
       {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
     </div>;
