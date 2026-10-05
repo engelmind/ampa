@@ -224,59 +224,262 @@ export function createEventParticipantsPdfArtifact(event:EventDetail,families:Fa
   );
 }
 
-async function buildMembershipCardDoc(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'){
-  const width=85.6, height=54;
-  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:[width,height]});
-  const members=[
-    ...family.guardians.map((g)=>g.fullName || [g.firstName,g.lastName].filter(Boolean).join(' ')),
-    ...family.students.map((s)=>`${s.firstName} ${s.lastName}`),
-  ].map((x)=>x.trim()).filter(Boolean);
-  const visible=members.slice(0,5);
-  if(members.length>5) visible[4]=`${visible[4]} · +${members.length-5}`;
-  const digits=(family.membershipNumber.match(/\d+/)?.[0]||family.membershipNumber).slice(-4);
-  const qrTarget=`${window.location.origin}/?socio=${encodeURIComponent(family.membershipNumber)}`;
-  const qrData=await QRCode.toDataURL(qrTarget,{errorCorrectionLevel:'M',margin:0,width:360,color:{dark:'#000000',light:'#FFFFFF'}});
 
-  doc.setFillColor(246,28,35); doc.roundedRect(0,0,width,height,3.6,3.6,'F');
-  doc.setFillColor(239,35,43); doc.circle(78,7,18,'F');
-  doc.setFillColor(232,27,35); doc.circle(4,52,14,'F');
-  doc.setFillColor(250,204,21); doc.rect(.8,height-1.6,width-1.6,1.1,'F');
+let membershipLogoPngPromise: Promise<string> | null = null;
 
-  doc.setFillColor(255,255,255); doc.roundedRect(4,4,9.5,9.5,1.2,1.2,'F');
-  doc.setTextColor(220,27,36); doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.text('AG',8.75,10.2,{align:'center'});
+async function getMembershipLogoPng(): Promise<string> {
+  if (membershipLogoPngPromise) return membershipLogoPngPromise;
+  membershipLogoPngPromise = (async () => {
+    const response = await fetch('/logo-ampa.svg');
+    if (!response.ok) throw new Error('LOGO_NOT_FOUND');
+    const svg = await response.text();
+    const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const image = new Image();
+      image.src = objectUrl;
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('LOGO_LOAD_FAILED'));
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 380;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('CANVAS_UNAVAILABLE');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/png', 1);
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+  })();
+  return membershipLogoPngPromise;
+}
 
-  doc.setTextColor(255,255,255); doc.setFontSize(8.4); doc.text('AMPA AGUSTINOS',15.3,8.1);
-  doc.setFontSize(5.3); doc.text('GRANADA',15.3,11.1);
-  const year=academicYear.replace('/','-');
-  doc.setFontSize(4.5); doc.text('CURSO ESCOLAR',79.8,5.9,{align:'right'});
-  doc.setTextColor(253,224,15); doc.setFontSize(10.5); doc.text(year,79.8,11.2,{align:'right'});
+function drawPeopleIcon(doc: jsPDF, x:number, y:number, scale=1){
+  doc.setDrawColor(55,65,81);
+  doc.setLineWidth(.32*scale);
+  doc.circle(x+1.4*scale,y+1.2*scale,.8*scale,'S');
+  doc.circle(x+3.9*scale,y+1.2*scale,.8*scale,'S');
+  doc.circle(x+2.65*scale,y+.65*scale,.9*scale,'S');
+  doc.line(x+.3*scale,y+4.1*scale,x+.3*scale,y+3.2*scale);
+  doc.line(x+.3*scale,y+3.2*scale,x+1.5*scale,y+2.5*scale);
+  doc.line(x+5*scale,y+4.1*scale,x+5*scale,y+3.2*scale);
+  doc.line(x+5*scale,y+3.2*scale,x+3.8*scale,y+2.5*scale);
+  doc.line(x+1.2*scale,y+4.5*scale,x+1.2*scale,y+3.4*scale);
+  doc.line(x+1.2*scale,y+3.4*scale,x+2.65*scale,y+2.65*scale);
+  doc.line(x+4.1*scale,y+4.5*scale,x+4.1*scale,y+3.4*scale);
+  doc.line(x+4.1*scale,y+3.4*scale,x+2.65*scale,y+2.65*scale);
+}
 
-  doc.setTextColor(255,255,255); doc.setFontSize(4.5); doc.text('FAMILIA',4.2,18.6);
-  doc.setFontSize(family.familyName.length>28?9.2:11.2); doc.text(`Familia ${family.familyName}`,4.2,24.6,{maxWidth:57});
+function drawStudentIcon(doc: jsPDF, x:number, y:number, scale=1){
+  doc.setDrawColor(55,65,81);
+  doc.setLineWidth(.32*scale);
+  const cx=x+2.7*scale, top=y+.7*scale;
+  doc.line(cx,top,x+.2*scale,y+2.15*scale);
+  doc.line(x+.2*scale,y+2.15*scale,cx,y+3.55*scale);
+  doc.line(cx,y+3.55*scale,x+5.2*scale,y+2.15*scale);
+  doc.line(x+5.2*scale,y+2.15*scale,cx,top);
+  doc.line(x+1.25*scale,y+2.75*scale,x+1.25*scale,y+4.05*scale);
+  doc.line(x+1.25*scale,y+4.05*scale,cx,y+4.65*scale);
+  doc.line(cx,y+4.65*scale,x+4.1*scale,y+4.05*scale);
+  doc.line(x+4.1*scale,y+4.05*scale,x+4.1*scale,y+2.75*scale);
+  doc.line(x+5.2*scale,y+2.15*scale,x+5.2*scale,y+4.15*scale);
+}
 
-  doc.setDrawColor(255,102,107); doc.setFillColor(248,54,61); doc.setLineWidth(.35); doc.roundedRect(4.2,30.5,10.3,12.2,1.3,1.3,'FD');
-  doc.setTextColor(255,255,255); doc.setFontSize(3.7); doc.text('Nº SOCIO',9.35,34.3,{align:'center'});
-  doc.setFontSize(digits.length>3?10.5:12.5); doc.text(digits.padStart(3,'0'),9.35,40.5,{align:'center'});
+function drawCalendarIcon(doc: jsPDF, x:number, y:number){
+  doc.setDrawColor(239,28,35);
+  doc.setLineWidth(.4);
+  doc.roundedRect(x,y,5.2,4.7,.6,.6,'S');
+  doc.line(x,y+1.45,x+5.2,y+1.45);
+  doc.line(x+1.25,y-.55,x+1.25,y+.65);
+  doc.line(x+3.95,y-.55,x+3.95,y+.65);
+  doc.circle(x+1.3,y+2.55,.18,'F');
+  doc.circle(x+2.6,y+2.55,.18,'F');
+  doc.circle(x+3.9,y+2.55,.18,'F');
+  doc.circle(x+1.3,y+3.65,.18,'F');
+  doc.circle(x+2.6,y+3.65,.18,'F');
+}
 
-  doc.setDrawColor(255,148,152); doc.setLineWidth(.3); doc.line(16.7,30.7,16.7,44.9);
-  doc.setTextColor(255,255,255); doc.setFontSize(3.8); doc.text('INTEGRANTES',18.4,33);
-  doc.setFont('helvetica','bold'); doc.setFontSize(visible.length>=5?5.5:6.2);
-  visible.forEach((name,index)=>doc.text(name,18.4,36.2+index*2.85,{maxWidth:41}));
-
-  doc.setFillColor(255,255,255); doc.roundedRect(63.8,29.7,18.3,18.3,1.2,1.2,'F');
-  doc.addImage(qrData,'PNG',64.6,30.5,16.7,16.7);
-
-  if(!family.isActiveThisYear){
-    doc.setFillColor(253,224,15); doc.roundedRect(62,49,20,3,1,1,'F');
-    doc.setTextColor(126,34,34); doc.setFontSize(4.3); doc.text('CUOTA PENDIENTE',72,51.1,{align:'center'});
+function fitMemberGroups(
+  doc: jsPDF,
+  guardians:string,
+  students:string,
+  maxWidth:number,
+  maxHeight:number
+){
+  const groups=[guardians,students].map((text)=>text || '—');
+  for(let size=5.15; size>=2.8; size-=.2){
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(size);
+    const lines=groups.map((text)=>doc.splitTextToSize(text,maxWidth) as string[]);
+    const lineHeight=size*.405;
+    const total=(lines[0].length+lines[1].length)*lineHeight+2.05;
+    if(total<=maxHeight) return {size,lineHeight,guardianLines:lines[0],studentLines:lines[1]};
   }
+  doc.setFontSize(2.8);
+  const lineHeight=1.14;
+  return {
+    size:2.8,
+    lineHeight,
+    guardianLines:doc.splitTextToSize(groups[0],maxWidth) as string[],
+    studentLines:doc.splitTextToSize(groups[1],maxWidth) as string[],
+  };
+}
+
+async function buildMembershipCardDoc(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'){
+  const pageW=210, pageH=297;
+  const width=85.6, height=54;
+  const cardX=(pageW-width)/2;
+  const cardY=35;
+  const X=(v:number)=>cardX+v;
+  const Y=(v:number)=>cardY+v;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const guardians=family.guardians
+    .map((g)=>g.fullName || [g.firstName,g.lastName].filter(Boolean).join(' '))
+    .map((x)=>x.trim()).filter(Boolean);
+  const students=family.students
+    .map((s)=>[s.firstName,s.lastName].filter(Boolean).join(' ').trim())
+    .filter(Boolean);
+  const guardianText=guardians.join(' · ');
+  const studentText=students.join(' · ');
+  const digits=(family.membershipNumber.match(/\d+/g)?.join('') || family.membershipNumber).trim();
+  const qrTarget=`${window.location.origin}/?socio=${encodeURIComponent(family.membershipNumber)}`;
+  const qrData=await QRCode.toDataURL(qrTarget,{errorCorrectionLevel:'M',margin:0,width:420,color:{dark:'#000000',light:'#FFFFFF'}});
+  const logoData=await getMembershipLogoPng();
+
+  doc.setFillColor(255,255,255);
+  doc.rect(0,0,pageW,pageH,'F');
+  doc.setDrawColor(190,190,190);
+  doc.setLineWidth(.22);
+  doc.setLineDashPattern([1.1,1.1],0);
+  doc.roundedRect(cardX-1.2,cardY-1.2,width+2.4,height+2.4,3.8,3.8,'S');
+  doc.setLineDashPattern([],0);
+
+  doc.setFillColor(255,255,255);
+  doc.setDrawColor(224,228,234);
+  doc.setLineWidth(.35);
+  doc.roundedRect(cardX,cardY,width,height,3.2,3.2,'FD');
+
+  doc.setFillColor(254,231,232);
+  doc.triangle(X(32),Y(54),X(85.6),Y(38.5),X(85.6),Y(54),'F');
+  doc.setFillColor(252,174,178);
+  doc.triangle(X(42),Y(54),X(85.6),Y(43.7),X(85.6),Y(54),'F');
+  doc.setFillColor(247,82,88);
+  doc.triangle(X(53),Y(54),X(85.6),Y(47.4),X(85.6),Y(54),'F');
+  doc.setFillColor(222,21,29);
+  doc.triangle(X(66),Y(54),X(85.6),Y(49.8),X(85.6),Y(54),'F');
+
+  doc.addImage(logoData,'PNG',X(4.1),Y(3.1),36.5,12.85,undefined,'FAST');
+  doc.setDrawColor(239,28,35);
+  doc.setLineWidth(.45);
+  doc.line(X(47.2),Y(3.5),X(47.2),Y(17.5));
+  doc.setTextColor(24,24,27);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(4.25);
+  doc.text('Colegio',X(50.6),Y(7.1));
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(6.25);
+  doc.text('Agustinos',X(50.6),Y(12.1));
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(4.55);
+  doc.text('Granada',X(50.6),Y(16.1));
+
+  doc.setTextColor(55,65,81);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(4.1);
+  doc.text('Familia:',X(5.1),Y(23.4));
+  doc.setTextColor(15,23,42);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(family.familyName.length>30?5.25:6.15);
+  doc.text(family.familyName,X(14.3),Y(23.4),{maxWidth:43});
+
+  doc.setDrawColor(232,232,232);
+  doc.setLineWidth(.22);
+  doc.line(X(5),Y(25.2),X(59),Y(25.2));
+
+  doc.setTextColor(55,65,81);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(4.1);
+  doc.text('Socio:',X(5.1),Y(29.2));
+  doc.setTextColor(15,23,42);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(6.3);
+  doc.text(digits || '—',X(14.3),Y(29.2));
+
+  if(family.isActiveThisYear){
+    doc.setFillColor(239,28,35);
+    doc.roundedRect(X(63.5),Y(20.1),18.2,5.35,2.65,2.65,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(3.9);
+    doc.text('SOCIO ACTIVO',X(72.6),Y(23.55),{align:'center'});
+  } else {
+    doc.setFillColor(245,158,11);
+    doc.roundedRect(X(63.5),Y(20.1),18.2,5.35,2.65,2.65,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(3.75);
+    doc.text('SOCIO INACTIVO',X(72.6),Y(23.55),{align:'center'});
+  }
+
+  const membersLayout=fitMemberGroups(doc,guardianText,studentText,50.5,13.1);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(membersLayout.size);
+  doc.setTextColor(15,23,42);
+  let cy=Y(34.2);
+  drawPeopleIcon(doc,X(5.2),cy-2.25,.72);
+  membersLayout.guardianLines.forEach((line)=>{
+    doc.text(line,X(10.1),cy,{maxWidth:50.5});
+    cy+=membersLayout.lineHeight;
+  });
+  cy+=1.05;
+  drawStudentIcon(doc,X(5.2),cy-2.2,.72);
+  membersLayout.studentLines.forEach((line)=>{
+    doc.text(line,X(10.1),cy,{maxWidth:50.5});
+    cy+=membersLayout.lineHeight;
+  });
+
+  doc.setFillColor(255,255,255);
+  doc.setDrawColor(222,226,232);
+  doc.setLineWidth(.25);
+  doc.roundedRect(X(66.4),Y(27.7),16.4,16.4,1.25,1.25,'FD');
+  doc.addImage(qrData,'PNG',X(67.2),Y(28.5),14.8,14.8);
+
+  drawCalendarIcon(doc,X(5.2),Y(47.2));
+  doc.setTextColor(55,65,81);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(3.65);
+  doc.text('Curso',X(12),Y(48.3));
+  doc.setTextColor(239,28,35);
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(7.2);
+  doc.text(academicYear,X(12),Y(52.25));
+
+  doc.setDrawColor(214,220,228);
+  doc.setLineWidth(.35);
+  doc.roundedRect(cardX,cardY,width,height,3.2,3.2,'S');
+
+  doc.setTextColor(120,120,120);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(7);
+  doc.text('Carnet a tamaño real: 85,6 × 54 mm · Imprimir al 100 % y recortar por la línea de puntos.',pageW/2,cardY+height+8,{align:'center'});
+
   return doc;
 }
 
 export async function createMembershipCardPdfArtifact(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'):Promise<PdfArtifact>{
   const doc=await buildMembershipCardDoc(family,academicYear,associationName);
   const year=academicYear.replace('/','-');
-  return artifact(doc,`carnet_ampa_${family.membershipNumber}_${year}.pdf`,`Carnet · Familia ${family.familyName}`,'85,6 × 54 mm');
+  const digits=(family.membershipNumber.match(/\d+/g)?.join('') || family.membershipNumber).trim();
+  return artifact(
+    doc,
+    `carnet_ampa_${digits || family.membershipNumber}_${year}.pdf`,
+    `Carnet · Familia ${family.familyName}`,
+    'A4 listo para imprimir · carnet 85,6 × 54 mm a escala 100 %'
+  );
 }
 
 export async function generateMembershipCardPdf(family:Family,academicYear:string,associationName='AMPA Agustinos Granada'):Promise<void>{
