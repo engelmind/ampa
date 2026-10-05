@@ -1,0 +1,393 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  CalendarDays, ChevronLeft, ImagePlus, Pencil, Plus, Save, Search, Trash2,
+  UserRound, Users, Baby, CheckCircle2, X, BarChart3, Percent
+} from 'lucide-react';
+import { backendApi } from '../services/backendApi';
+import { EventDetail, EventSummary, Family } from '../types/family';
+
+interface Props {
+  families: Family[];
+  events: EventSummary[];
+  totals: { activeFamilies: number; censusPeople: number };
+  canEdit: boolean;
+  canDelete: boolean;
+  onReload: () => Promise<void>;
+  onNotify: (type:'success'|'error'|'info',title:string,message?:string)=>void;
+}
+
+type EventDraft = Pick<EventDetail,'title'|'eventDate'|'description'|'imageDataUrl'> & { id?: string };
+
+const emptyDraft = ():EventDraft => ({
+  title:'',
+  eventDate:new Date().toISOString().slice(0,10),
+  description:'',
+  imageDataUrl:'',
+});
+
+const dateLabel = (iso:string) => {
+  if (!iso) return 'Sin fecha';
+  const d=new Date(iso+'T12:00:00');
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+};
+
+const personKey=(type:'guardian'|'student',id:string)=>`${type}:${id}`;
+
+async function imageToDataUrl(file:File){
+  if (!file.type.startsWith('image/')) throw new Error('Seleccione un archivo de imagen.');
+  if (file.size > 8_000_000) throw new Error('La imagen original no puede superar 8 MB.');
+  const source=await new Promise<string>((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('No se pudo leer la imagen.'));
+    reader.onload=()=>resolve(String(reader.result||''));
+    reader.readAsDataURL(file);
+  });
+  const img=await new Promise<HTMLImageElement>((resolve,reject)=>{
+    const node=new Image();
+    node.onload=()=>resolve(node);
+    node.onerror=()=>reject(new Error('La imagen no es válida.'));
+    node.src=source;
+  });
+  const max=900;
+  const scale=Math.min(1,max/Math.max(img.width,img.height));
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(img.width*scale));
+  canvas.height=Math.max(1,Math.round(img.height*scale));
+  const ctx=canvas.getContext('2d');
+  if(!ctx) throw new Error('No se pudo procesar la imagen.');
+  ctx.drawImage(img,0,0,canvas.width,canvas.height);
+  return canvas.toDataURL('image/jpeg',0.78);
+}
+
+export function EventsModule({families,events,totals,canEdit,canDelete,onReload,onNotify}:Props){
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [detail,setDetail]=useState<EventDetail|null>(null);
+  const [loadingDetail,setLoadingDetail]=useState(false);
+  const [draft,setDraft]=useState<EventDraft|null>(null);
+  const [savingEvent,setSavingEvent]=useState(false);
+  const [savingAttendance,setSavingAttendance]=useState(false);
+  const [selectedFamilies,setSelectedFamilies]=useState<Set<string>>(new Set());
+  const [selectedPeople,setSelectedPeople]=useState<Record<string,Set<string>>>({});
+  const [familyQuery,setFamilyQuery]=useState('');
+  const [onlySelected,setOnlySelected]=useState(false);
+
+  const orderedEvents=useMemo(
+    ()=>[...events].sort((a,b)=>b.eventDate.localeCompare(a.eventDate) || a.title.localeCompare(b.title,'es')),
+    [events]
+  );
+
+  const filteredFamilies=useMemo(()=>{
+    const q=familyQuery.trim().toLowerCase();
+    return families.filter((family)=>{
+      if(onlySelected && !selectedFamilies.has(family.id)) return false;
+      if(!q) return true;
+      const people=[
+        ...family.guardians.map(g=>g.fullName),
+        ...family.students.map(s=>`${s.firstName} ${s.lastName}`)
+      ].join(' ').toLowerCase();
+      return `${family.membershipNumber} ${family.familyName} ${people}`.toLowerCase().includes(q);
+    });
+  },[families,familyQuery,onlySelected,selectedFamilies]);
+
+  const loadDetail=async(id:string)=>{
+    setLoadingDetail(true);
+    try{
+      const response=await backendApi.getEvent(id);
+      setDetail(response.event);
+      setSelectedId(id);
+      setSelectedFamilies(new Set(response.event.familyIds));
+      const people:Record<string,Set<string>>={};
+      for(const attendee of response.event.attendees){
+        if(!people[attendee.familyId]) people[attendee.familyId]=new Set();
+        people[attendee.familyId].add(personKey(attendee.personType,attendee.personId));
+      }
+      setSelectedPeople(people);
+    }catch(error:any){
+      onNotify('error','No se pudo abrir el evento',error?.message);
+    }finally{
+      setLoadingDetail(false);
+    }
+  };
+
+  useEffect(()=>{
+    if(selectedId && !events.some(event=>event.id===selectedId)){
+      setSelectedId(null);
+      setDetail(null);
+    }
+  },[events,selectedId]);
+
+  const toggleFamily=(familyId:string)=>{
+    setSelectedFamilies(prev=>{
+      const next=new Set(prev);
+      if(next.has(familyId)){
+        next.delete(familyId);
+        setSelectedPeople(current=>{
+          const clone={...current};
+          delete clone[familyId];
+          return clone;
+        });
+      }else next.add(familyId);
+      return next;
+    });
+  };
+
+  const togglePerson=(familyId:string,key:string)=>{
+    setSelectedFamilies(prev=>new Set(prev).add(familyId));
+    setSelectedPeople(prev=>{
+      const next={...prev};
+      const set=new Set(next[familyId]||[]);
+      if(set.has(key)) set.delete(key); else set.add(key);
+      next[familyId]=set;
+      return next;
+    });
+  };
+
+  const selectedParticipantCount=useMemo(
+    ()=>Object.values(selectedPeople).reduce((total,set)=>total+set.size,0),
+    [selectedPeople]
+  );
+
+  const saveAttendance=async()=>{
+    if(!detail) return;
+    setSavingAttendance(true);
+    try{
+      const payload=Array.from(selectedFamilies).map(familyId=>{
+        const family=families.find(f=>f.id===familyId);
+        const keys=selectedPeople[familyId]||new Set<string>();
+        const attendees:Array<{personType:'guardian'|'student';personId:string;participantName:string}>=[];
+        for(const guardian of family?.guardians||[]){
+          if(keys.has(personKey('guardian',guardian.id))){
+            attendees.push({personType:'guardian',personId:guardian.id,participantName:guardian.fullName});
+          }
+        }
+        for(const student of family?.students||[]){
+          if(keys.has(personKey('student',student.id))){
+            attendees.push({personType:'student',personId:student.id,participantName:`${student.firstName} ${student.lastName}`.trim()});
+          }
+        }
+        return {familyId,attendees};
+      });
+      const result=await backendApi.saveEventAttendance(detail.id,payload);
+      await onReload();
+      await loadDetail(detail.id);
+      onNotify('success','Participación guardada',`${result.families} familias · ${result.participants} participantes.`);
+    }catch(error:any){
+      onNotify('error','No se pudo guardar la participación',error?.message);
+    }finally{
+      setSavingAttendance(false);
+    }
+  };
+
+  const saveEvent=async()=>{
+    if(!draft?.title.trim() || !draft.eventDate){
+      onNotify('error','Faltan datos','Indique al menos el título y la fecha.');
+      return;
+    }
+    setSavingEvent(true);
+    try{
+      if(draft.id) await backendApi.updateEvent({id:draft.id,...draft});
+      else await backendApi.createEvent(draft);
+      setDraft(null);
+      await onReload();
+      onNotify('success',draft.id?'Evento actualizado':'Evento creado');
+    }catch(error:any){
+      onNotify('error','No se pudo guardar el evento',error?.message);
+    }finally{
+      setSavingEvent(false);
+    }
+  };
+
+  const removeEvent=async()=>{
+    if(!detail || !canDelete) return;
+    if(!window.confirm(`¿Eliminar definitivamente el evento “${detail.title}” y su registro de participación?`)) return;
+    try{
+      await backendApi.deleteEvent(detail.id);
+      setSelectedId(null); setDetail(null);
+      await onReload();
+      onNotify('success','Evento eliminado');
+    }catch(error:any){
+      onNotify('error','No se pudo eliminar el evento',error?.message);
+    }
+  };
+
+  const acceptImage=async(file?:File)=>{
+    if(!file || !draft) return;
+    try{
+      const imageDataUrl=await imageToDataUrl(file);
+      setDraft({...draft,imageDataUrl});
+    }catch(error:any){
+      onNotify('error','No se pudo añadir la imagen',error?.message);
+    }
+  };
+
+  if(detail){
+    const summary=events.find(e=>e.id===detail.id);
+    const familyRate=totals.activeFamilies ? Math.round((selectedFamilies.size/totals.activeFamilies)*1000)/10 : 0;
+    const censusRate=totals.censusPeople ? Math.round((selectedParticipantCount/totals.censusPeople)*1000)/10 : 0;
+    return <div className="space-y-4">
+      <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white/90 shadow-[0_18px_50px_rgba(71,85,105,.09)]">
+        <div className="grid lg:grid-cols-[280px_1fr]">
+          <div className="relative min-h-[210px] bg-gradient-to-br from-indigo-100 via-violet-100 to-rose-100">
+            {detail.imageDataUrl ? <img src={detail.imageDataUrl} alt="" className="absolute inset-0 h-full w-full object-cover"/> :
+              <div className="absolute inset-0 flex items-center justify-center"><CalendarDays size={52} className="text-indigo-300"/></div>}
+            <button type="button" onClick={()=>{setDetail(null);setSelectedId(null);}} className="absolute left-3 top-3 flex min-h-10 items-center gap-2 rounded-2xl bg-white/90 px-3 text-xs font-black text-slate-700 shadow-sm backdrop-blur"><ChevronLeft size={16}/> Eventos</button>
+          </div>
+          <div className="p-5 sm:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-500">{dateLabel(detail.eventDate)}</div>
+                <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{detail.title}</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{detail.description || 'Sin descripción.'}</p>
+              </div>
+              {canEdit&&<div className="flex gap-2">
+                <button type="button" onClick={()=>setDraft({id:detail.id,title:detail.title,eventDate:detail.eventDate,description:detail.description,imageDataUrl:detail.imageDataUrl})} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
+                {canDelete&&<button type="button" onClick={()=>void removeEvent()} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-3 text-rose-600"><Trash2 size={15}/></button>}
+              </div>}
+            </div>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Familias',selectedFamilies.size,Users],
+                ['Participantes',selectedParticipantCount,UserRound],
+                ['% familias',`${familyRate}%`,Percent],
+                ['% censo',`${censusRate}%`,BarChart3],
+              ].map(([label,value,Icon]:any)=><div key={label} className="rounded-[20px] border border-white bg-gradient-to-br from-white to-slate-50 p-3.5 shadow-sm">
+                <Icon size={16} className="text-indigo-400"/>
+                <div className="mt-3 text-2xl font-black tracking-tight text-slate-950">{value}</div>
+                <div className="mt-1 text-[10px] font-bold text-slate-400">{label}</div>
+              </div>)}
+            </div>
+            {summary&&<div className="mt-3 text-[10px] font-semibold text-slate-400">Referencia guardada: {summary.familyCount} familias · {summary.participantCount} participantes</div>}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Inscripción y asistencia</div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">Familias participantes</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Marque la familia y, dentro de ella, las personas concretas que participan.</p>
+          </div>
+          {canEdit&&<button type="button" disabled={savingAttendance} onClick={()=>void saveAttendance()} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white disabled:opacity-50"><Save size={15}/>{savingAttendance?'Guardando…':'Guardar participación'}</button>}
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <label className="relative"><Search size={16} className="absolute left-4 top-3.5 text-slate-400"/><input value={familyQuery} onChange={e=>setFamilyQuery(e.target.value)} placeholder="Buscar familia o miembro…" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none focus:border-indigo-300"/></label>
+          <label className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={onlySelected} onChange={e=>setOnlySelected(e.target.checked)}/> Solo participantes</label>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {filteredFamilies.map(family=>{
+            const checked=selectedFamilies.has(family.id);
+            const people=selectedPeople[family.id]||new Set<string>();
+            return <div key={family.id} className={`rounded-[22px] border p-3 transition ${checked?'border-indigo-200 bg-indigo-50/45':'border-slate-100 bg-slate-50/65'}`}>
+              <div className="flex items-center gap-3">
+                <input disabled={!canEdit} type="checkbox" checked={checked} onChange={()=>toggleFamily(family.id)} className="h-4 w-4 rounded border-slate-300"/>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2"><strong className="truncate text-xs text-slate-800">Familia {family.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{family.membershipNumber}</span></div>
+                  <div className="mt-0.5 text-[10px] text-slate-400">{family.guardians.length} adulto(s) · {family.students.length} hijo(s) · {people.size} participante(s)</div>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
+              </div>
+              {checked&&<div className="mt-3 grid gap-2 border-t border-indigo-100 pt-3 md:grid-cols-2">
+                <div className="rounded-2xl bg-white/80 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><UserRound size={13}/> Padres / tutores</div>
+                  <div className="space-y-1.5">
+                    {family.guardians.map(g=>{const key=personKey('guardian',g.id);return <label key={g.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{g.fullName}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">{g.relationship.replace('_',' ')}</span></label>})}
+                    {!family.guardians.length&&<div className="text-[10px] text-slate-400">Sin adultos registrados.</div>}
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-white/80 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><Baby size={13}/> Hijos/as</div>
+                  <div className="space-y-1.5">
+                    {family.students.map(s=>{const key=personKey('student',s.id);return <label key={s.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{s.firstName} {s.lastName}</span><span className="ml-auto shrink-0 text-[9px] text-slate-400">{s.className||'Sin curso'}</span></label>})}
+                    {!family.students.length&&<div className="text-[10px] text-slate-400">Sin hijos/as registrados.</div>}
+                  </div>
+                </div>
+              </div>}
+            </div>;
+          })}
+        </div>
+      </section>
+
+      {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
+    </div>;
+  }
+
+  return <div className="space-y-4">
+    <section className="relative overflow-hidden rounded-[30px] border border-white/70 bg-gradient-to-br from-white via-white to-[#eef2ff] p-5 shadow-[0_20px_55px_rgba(71,85,105,.10)] sm:p-7">
+      <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-gradient-to-br from-indigo-200/45 to-rose-100/30 blur-2xl"/>
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[.22em] text-indigo-500">Eventos y actividades</div>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-[32px]">Participación del AMPA</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Cree actividades, gestione asistentes por unidad familiar y mida la participación real de la asociación.</p>
+        </div>
+        {canEdit&&<button type="button" onClick={()=>setDraft(emptyDraft())} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white shadow-[0_10px_25px_rgba(15,23,42,.18)]"><Plus size={16}/> Nuevo evento</button>}
+      </div>
+      <div className="relative mt-6 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-[20px] border border-white bg-white/75 p-3.5 shadow-sm"><CalendarDays size={16} className="text-indigo-400"/><div className="mt-3 text-2xl font-black">{events.length}</div><div className="mt-1 text-[10px] font-bold text-slate-400">Eventos registrados</div></div>
+        <div className="rounded-[20px] border border-white bg-white/75 p-3.5 shadow-sm"><Users size={16} className="text-indigo-400"/><div className="mt-3 text-2xl font-black">{totals.activeFamilies}</div><div className="mt-1 text-[10px] font-bold text-slate-400">Familias activas de referencia</div></div>
+        <div className="rounded-[20px] border border-white bg-white/75 p-3.5 shadow-sm"><UserRound size={16} className="text-indigo-400"/><div className="mt-3 text-2xl font-black">{totals.censusPeople}</div><div className="mt-1 text-[10px] font-bold text-slate-400">Personas en el censo familiar</div></div>
+      </div>
+    </section>
+
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {orderedEvents.map(event=><button key={event.id} type="button" onClick={()=>void loadDetail(event.id)} className="group overflow-hidden rounded-[28px] border border-white/70 bg-white/90 text-left shadow-[0_16px_40px_rgba(71,85,105,.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(71,85,105,.12)]">
+        <div className="relative h-36 bg-gradient-to-br from-indigo-100 via-violet-100 to-rose-100">
+          {event.imageDataUrl?<img src={event.imageDataUrl} alt="" className="h-full w-full object-cover"/>:<div className="flex h-full items-center justify-center"><CalendarDays size={40} className="text-indigo-300"/></div>}
+          <span className="absolute left-3 top-3 rounded-xl bg-white/90 px-2.5 py-1.5 text-[10px] font-black text-slate-700 shadow-sm backdrop-blur">{dateLabel(event.eventDate)}</span>
+        </div>
+        <div className="p-4">
+          <h2 className="truncate text-base font-black text-slate-900">{event.title}</h2>
+          <p className="mt-1 line-clamp-2 min-h-9 text-[11px] leading-4 text-slate-500">{event.description||'Sin descripción.'}</p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Familias · {event.familyParticipationRate}%</div></div>
+            <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Participantes · {event.censusParticipationRate}%</div></div>
+          </div>
+        </div>
+      </button>)}
+      {!events.length&&<div className="md:col-span-2 xl:col-span-3 rounded-[28px] border-2 border-dashed border-white/80 bg-white/65 p-12 text-center"><CalendarDays size={30} className="mx-auto text-slate-300"/><div className="mt-3 text-sm font-black text-slate-500">Todavía no hay eventos</div><div className="mt-1 text-xs text-slate-400">Cree el primero para comenzar a medir la participación.</div></div>}
+    </div>
+    {loadingDetail&&<div className="rounded-2xl bg-white/80 p-4 text-center text-xs font-bold text-slate-400">Cargando evento…</div>}
+    {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
+  </div>;
+}
+
+function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
+  draft:EventDraft;
+  setDraft:(draft:EventDraft)=>void;
+  saving:boolean;
+  onSave:()=>void;
+  onClose:()=>void;
+  onImage:(file?:File)=>void;
+}){
+  const [dragging,setDragging]=useState(false);
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 sm:items-center sm:p-4">
+    <div className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-t-[30px] bg-white shadow-2xl sm:rounded-[30px]">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 p-5 backdrop-blur">
+        <div><div className="text-[10px] font-black uppercase tracking-wider text-indigo-500">Eventos</div><h2 className="text-lg font-black">{draft.id?'Editar evento':'Nuevo evento'}</h2></div>
+        <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
+      </div>
+      <div className="space-y-5 p-5 sm:p-6">
+        <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
+          <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Título</span><input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm font-bold" placeholder="Ej. Visita a los Bosques de la Alhambra"/></label>
+          <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha</span><input type="date" value={draft.eventDate} onChange={e=>setDraft({...draft,eventDate:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm"/></label>
+        </div>
+        <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Descripción breve</span><textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} rows={4} className="w-full rounded-2xl border border-slate-200 p-3 text-sm leading-6" placeholder="Objetivo, lugar o información útil de la actividad."/></label>
+        <div>
+          <div className="mb-1 text-[11px] font-bold text-slate-500">Imagen del evento</div>
+          <label onDragEnter={e=>{e.preventDefault();setDragging(true)}} onDragOver={e=>e.preventDefault()} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);void onImage(e.dataTransfer.files?.[0])}} className={`relative flex min-h-48 cursor-pointer items-center justify-center overflow-hidden rounded-[24px] border-2 border-dashed transition ${dragging?'border-indigo-400 bg-indigo-50':'border-slate-200 bg-slate-50'}`}>
+            {draft.imageDataUrl?<img src={draft.imageDataUrl} alt="" className="absolute inset-0 h-full w-full object-cover"/>:<div className="text-center text-slate-400"><ImagePlus size={30} className="mx-auto"/><div className="mt-2 text-xs font-black">Arrastre una imagen o pulse para elegirla</div><div className="mt-1 text-[10px]">Se optimizará automáticamente para la app</div></div>}
+            <input type="file" accept="image/*" className="sr-only" onChange={e=>void onImage(e.target.files?.[0])}/>
+            {draft.imageDataUrl&&<div className="absolute inset-x-0 bottom-0 bg-slate-950/55 p-2 text-center text-[10px] font-bold text-white backdrop-blur">Pulse o arrastre otra imagen para sustituirla</div>}
+          </label>
+          {draft.imageDataUrl&&<button type="button" onClick={()=>setDraft({...draft,imageDataUrl:''})} className="mt-2 text-[10px] font-bold text-rose-600">Quitar imagen</button>}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <button type="button" onClick={onClose} className="min-h-11 rounded-2xl px-4 text-xs font-bold text-slate-500">Cancelar</button>
+          <button type="button" disabled={saving} onClick={onSave} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-5 text-xs font-extrabold text-white disabled:opacity-50"><Save size={15}/>{saving?'Guardando…':'Guardar evento'}</button>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
