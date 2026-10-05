@@ -760,7 +760,7 @@ export default function App() {
                   <div className="flex rounded-2xl bg-slate-100 p-1">
                     <button type="button" onClick={()=>setDirectoryView('table')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='table'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><Table2 size={14}/> Tabla</button>
                     <button type="button" onClick={()=>setDirectoryView('list')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='list'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><Rows3 size={14}/> Lista</button>
-                    <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='cards'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><LayoutGrid size={14}/> Fichas</button>
+                    <button type="button" onClick={()=>setDirectoryView('cards')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${directoryView==='cards'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><LayoutGrid size={14}/> Tarjetas</button>
                   </div>
                 </div>
 
