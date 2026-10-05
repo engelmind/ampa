@@ -1,4 +1,4 @@
-import { ActivityLogEntry, AppUser, Family, SystemSettings } from '../types/family';
+import { ActivityLogEntry, AppUser, EventAttendanceFamily, EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -45,6 +45,20 @@ export const backendApi = {
     request<{ ok: boolean }>(`/api/families/${familyId}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }),
   resetAllFamiliesActive: (active: boolean) =>
     request<{ ok: boolean; updated: number }>('/api/families/active/reset', { method: 'POST', body: JSON.stringify({ active }) }),
+
+  getEvents: () => request<{ events: EventSummary[]; totals: { activeFamilies: number; censusPeople: number } }>('/api/events'),
+  getEvent: (id: string) => request<{ event: EventDetail }>(`/api/events/${id}`),
+  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'description' | 'imageDataUrl'>) =>
+    request<{ event: { id: string } }>('/api/events', { method:'POST', body:JSON.stringify(event) }),
+  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'description' | 'imageDataUrl'>) =>
+    request<{ ok:boolean }>(`/api/events/${event.id}`, { method:'PUT', body:JSON.stringify(event) }),
+  deleteEvent: (id:string) =>
+    request<{ ok:boolean }>(`/api/events/${id}`, { method:'DELETE' }),
+  saveEventAttendance: (id:string, families:EventAttendanceFamily[]) =>
+    request<{ ok:boolean; families:number; participants:number }>(`/api/events/${id}/attendance`, {
+      method:'PUT',
+      body:JSON.stringify({families}),
+    }),
 
   getSettings: () => request<{ settings: SystemSettings }>('/api/settings'),
   saveSettings: (settings: SystemSettings) =>
