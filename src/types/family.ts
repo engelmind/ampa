@@ -45,6 +45,51 @@ export interface Student {
   specialNeeds?: string;
 }
 
+export interface FamilyEventRecord {
+  eventId: string;
+  title: string;
+  eventDate: string;
+  participantCount: number;
+  participantNames: string[];
+}
+
+export interface EventSummary {
+  id: string;
+  title: string;
+  eventDate: string;
+  description: string;
+  imageDataUrl?: string;
+  familyCount: number;
+  participantCount: number;
+  familyParticipationRate: number;
+  censusParticipationRate: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EventAttendee {
+  id?: string;
+  familyId: string;
+  personType: 'guardian' | 'student';
+  personId: string;
+  participantName: string;
+}
+
+export interface EventDetail {
+  id: string;
+  title: string;
+  eventDate: string;
+  description: string;
+  imageDataUrl?: string;
+  familyIds: string[];
+  attendees: EventAttendee[];
+}
+
+export interface EventAttendanceFamily {
+  familyId: string;
+  attendees: Array<Pick<EventAttendee, 'personType' | 'personId' | 'participantName'>>;
+}
+
 export interface Family {
   id: string;
   membershipNumber: string;
@@ -54,6 +99,7 @@ export interface Family {
   registrationAcademicYear?: string;
   guardians: Guardian[];
   students: Student[];
+  events?: FamilyEventRecord[];
   address: {
     street: string;
     city: string;
@@ -69,10 +115,10 @@ export interface ActivityLogEntry {
   userId: string;
   userName: string;
   timestamp: string;
-  entityType: 'family' | 'user' | 'settings' | 'course' | 'export' | 'import' | 'card';
+  entityType: 'family' | 'user' | 'settings' | 'course' | 'export' | 'import' | 'card' | 'event';
   entityId?: string;
   entityLabel?: string;
-  action: 'create' | 'update' | 'delete' | 'renew' | 'activate' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card';
+  action: 'create' | 'update' | 'delete' | 'renew' | 'activate' | 'deactivate' | 'login' | 'export' | 'import' | 'settings' | 'card' | 'audit';
   summary: string;
 }
 
@@ -84,7 +130,7 @@ export interface SystemSettings {
   contactEmail: string;
 }
 
-export type MainViewTab = 'dashboard' | 'families' | 'settings';
+export type MainViewTab = 'dashboard' | 'families' | 'events' | 'settings';
 
 export interface FamilyFilters {
   searchQuery: string;
