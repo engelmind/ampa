@@ -581,6 +581,7 @@ export default function App() {
             {[
               ['dashboard','Panel',LayoutDashboard],
               ['families','Directorio',Users],
+              ['events','Eventos',CalendarDays],
               ['settings','Ajustes',Settings],
             ].map(([id,label,Icon]:any)=>(
               <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center justify-center gap-1.5 rounded-xl text-[11px] font-extrabold ${tab===id?'bg-slate-900 text-white':'text-slate-500'}`}><Icon size={14}/>{label}</button>
