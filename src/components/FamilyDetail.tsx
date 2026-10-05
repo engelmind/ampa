@@ -8,7 +8,7 @@ import { PdfPreviewModal } from './PdfPreviewModal';
 import { EmailCardModal } from './EmailCardModal';
 import { getFamilyDataIssues } from '../utils/dataQuality';
 
-type Section = 'family' | 'history';
+type Section = 'family' | 'events' | 'history';
 
 interface Props {
   family: Family;
@@ -47,6 +47,7 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
 
   const sections: Array<[Section, string, React.ComponentType<{ size?: number }>]> = [
     ['family', 'Unidad familiar', UserRound],
+    ['events', 'Eventos', CalendarDays],
     ['history', 'Historial', History],
   ];
 
@@ -180,6 +181,43 @@ export function FamilyDetail({ family, settings, activity, canEdit, onClose, onE
                 </div>
                 {family.notes && <div className="mt-3 border-t border-slate-200 pt-3 text-xs leading-5 text-slate-600">{family.notes}</div>}
               </section>
+            </div>
+          )}
+
+          {section === 'events' && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[20px] bg-gradient-to-br from-indigo-50 to-white p-4">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Eventos registrados</div>
+                  <div className="mt-2 text-3xl font-black text-slate-950">{family.events?.length || 0}</div>
+                </div>
+                <div className="rounded-[20px] bg-gradient-to-br from-rose-50 to-white p-4">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Participantes de la familia</div>
+                  <div className="mt-2 text-3xl font-black text-slate-950">{(family.events || []).reduce((total,event)=>total+event.participantCount,0)}</div>
+                </div>
+                <div className="rounded-[20px] bg-gradient-to-br from-slate-50 to-white p-4">
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Última actividad</div>
+                  <div className="mt-2 text-sm font-black text-slate-800">{family.events?.[0] ? new Date(family.events[0].eventDate+'T12:00:00').toLocaleDateString('es-ES') : '—'}</div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {(family.events || []).map((event)=>(
+                  <div key={event.eventId} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-wider text-indigo-500">{new Date(event.eventDate+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</div>
+                        <div className="mt-1 text-sm font-black text-slate-900">{event.title}</div>
+                      </div>
+                      <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">{event.participantCount} participante{event.participantCount===1?'':'s'}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {event.participantNames.map((name)=><span key={name} className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{name}</span>)}
+                      {!event.participantNames.length&&<span className="text-[10px] text-slate-400">Familia registrada sin asistentes individuales seleccionados.</span>}
+                    </div>
+                  </div>
+                ))}
+                {!family.events?.length&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">Esta familia todavía no tiene participación registrada en eventos o actividades.</div>}
+              </div>
             </div>
           )}
 
