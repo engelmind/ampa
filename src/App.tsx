@@ -803,6 +803,7 @@ export default function App() {
               families={families}
               events={events}
               totals={eventTotals}
+              settings={settings}
               canEdit={canEdit}
               canDelete={currentUser.role === 'superadmin'}
               onReload={loadWorkspace}
