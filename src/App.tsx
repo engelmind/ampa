@@ -3,9 +3,9 @@ import {
   LayoutDashboard, Users, Settings, Search, Plus, Download, LogOut, ChevronRight,
   UserRound, GraduationCap, CheckCircle2, Clock3, X, Pencil, Save, RefreshCcw,
   AlertTriangle, MapPin, Phone, Mail, Trash2, UserPlus, Baby, Activity, BarChart3,
-  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning, LayoutGrid, List, Files, Table2, Rows3
+  ContactRound, ShieldCheck, TrendingUp, ArrowRight, FileWarning, LayoutGrid, List, Files, Table2, Rows3, CalendarDays
 } from 'lucide-react';
-import { AppUser, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
+import { AppUser, EventSummary, Family, Guardian, MainViewTab, Student, SystemSettings } from './types/family';
 import { exportToCSV } from './utils/exportUtils';
 import { backendApi } from './services/backendApi';
 import { calculateStudentCourse, hasOfficialCurrentCourse, normalizeCourseLabel, getNextAcademicYear } from './utils/academicCourse';
@@ -21,6 +21,7 @@ import { ReportsCenter } from './components/ReportsCenter';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { CompactFamilyGrid } from './components/CompactFamilyGrid';
 import { CompactFamilyList } from './components/CompactFamilyList';
+import { EventsModule } from './components/EventsModule';
 
 const defaultSettings: SystemSettings = {
   activeAcademicYear: '2026/2027',
@@ -169,6 +170,8 @@ const newStudent = (): Student => ({
 export default function App() {
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
+  const [events, setEvents] = useState<EventSummary[]>([]);
+  const [eventTotals, setEventTotals] = useState({ activeFamilies: 0, censusPeople: 0 });
   const [settings, setSettings] = useState<SystemSettings>(defaultSettings);
   const [tab, setTab] = useState<MainViewTab>('dashboard');
   const [query, setQuery] = useState('');
@@ -196,12 +199,15 @@ export default function App() {
   };
 
   const loadWorkspace = async () => {
-    const [familiesResult, settingsResult, activityResult] = await Promise.all([
+    const [familiesResult, settingsResult, activityResult, eventsResult] = await Promise.all([
       backendApi.getFamilies(),
       backendApi.getSettings(),
       backendApi.getActivity(),
+      backendApi.getEvents(),
     ]);
     setFamilies(familiesResult.families);
+    setEvents(eventsResult.events);
+    setEventTotals(eventsResult.totals);
     setSettings({ ...defaultSettings, ...settingsResult.settings });
     setActivity(activityResult.activity);
 
@@ -386,6 +392,8 @@ export default function App() {
     try { await backendApi.logout(); } catch {}
     setCurrentUser(null);
     setFamilies([]);
+    setEvents([]);
+    setEventTotals({ activeFamilies: 0, censusPeople: 0 });
     setActivity([]);
     setBootState('login');
   };
@@ -558,6 +566,7 @@ export default function App() {
               {[
                 ['dashboard','Panel',LayoutDashboard],
                 ['families','Directorio',Users],
+                ['events','Eventos',CalendarDays],
                 ['settings','Ajustes',Settings],
               ].map(([id,label,Icon]:any)=>(
                 <button key={id} type="button" onClick={()=>setTab(id)} className={`flex min-h-10 items-center gap-2 rounded-xl px-4 text-xs font-extrabold transition ${tab===id?'bg-white text-slate-950 shadow-sm':'text-slate-500 hover:text-slate-800'}`}><Icon size={15}/>{label}</button>
@@ -568,7 +577,7 @@ export default function App() {
               <button type="button" onClick={handleLogout} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm hover:bg-slate-50"><LogOut size={15}/><span className="hidden sm:inline">Salir</span></button>
             </div>
           </div>
-          <nav className="grid grid-cols-3 gap-1 border-t border-slate-100 p-2 md:hidden">
+          <nav className="grid grid-cols-4 gap-1 border-t border-slate-100 p-2 md:hidden">
             {[
               ['dashboard','Panel',LayoutDashboard],
               ['families','Directorio',Users],
@@ -765,7 +774,7 @@ export default function App() {
               </section>
 
               {directoryView==='cards' ? (
-                <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={40}/>
+                <CompactFamilyGrid families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={24}/>
               ) : directoryView==='list' ? (
                 <CompactFamilyList families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={80}/>
               ) : (
@@ -787,6 +796,18 @@ export default function App() {
                 </div>
               )}
             </div>
+          )}
+
+          {tab === 'events' && (
+            <EventsModule
+              families={families}
+              events={events}
+              totals={eventTotals}
+              canEdit={canEdit}
+              canDelete={currentUser.role === 'superadmin'}
+              onReload={loadWorkspace}
+              onNotify={toast}
+            />
           )}
 
           {tab === 'settings' && (
