@@ -24,8 +24,8 @@ export function CompactFamilyList({families,academicYear,onSelect,pageSize=80}:P
   return <div className="space-y-3">
     <div className="overflow-x-auto rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
       <div className="min-w-[1180px]">
-        <div className="grid grid-cols-[90px_220px_220px_160px_1fr_82px] gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[9px] font-black uppercase tracking-[.14em] text-slate-400">
-          <span>Socio</span><span>Familia</span><span>Contacto</span><span>Teléfono</span><span>Alumnos</span><span>Estado</span>
+        <div className="grid grid-cols-[90px_210px_190px_145px_70px_1fr_82px] gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-[9px] font-black uppercase tracking-[.14em] text-slate-400">
+          <span>Socio</span><span>Familia</span><span>Contacto</span><span>Teléfono</span><span>Hijos</span><span>Alumnos</span><span>Estado</span>
         </div>
         <div className="divide-y divide-slate-100">
           {visible.map((family)=>{
@@ -47,6 +47,7 @@ export function CompactFamilyList({families,academicYear,onSelect,pageSize=80}:P
               <span className="truncate font-extrabold text-slate-800">{family.familyName}</span>
               <span className="truncate text-slate-600">{main?.fullName || 'Sin contacto'}</span>
               <span className="truncate text-slate-500">{main?.phone || main?.email || '—'}</span>
+              <span className="text-center text-xs font-black text-slate-700">{family.students.length}</span>
               <span className="truncate text-slate-600" title={students || 'Sin alumnos'}>{students || 'Sin alumnos'}</span>
               <span className={`text-[9px] font-black uppercase ${family.isActiveThisYear?'text-emerald-700':'text-amber-700'}`}>
                 {family.isActiveThisYear?'Activa':'Inactiva'}
