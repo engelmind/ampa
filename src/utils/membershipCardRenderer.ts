@@ -88,7 +88,7 @@ export async function renderMembershipCardPng(
   academicYear: string
 ): Promise<string> {
   const [logoData, schoolData] = await Promise.all([
-    assetToDataUrl('/logo-ampa.svg'),
+    assetToDataUrl('/logo-ampa-corporate.png'),
     assetToDataUrl('/ampa-school.webp'),
   ]);
 
@@ -148,7 +148,7 @@ export async function renderMembershipCardPng(
       '<path d="M736 531 C1002 443 1167 623 1374 627 C1504 629 1607 563 1692 503 L1692 637 C1517 747 1368 710 1214 641 C1036 560 921 557 746 624 Z" fill="#ef1721" opacity=".72"/>' +
       '<path d="M1050 558 C1234 489 1365 604 1482 606 C1557 607 1628 568 1692 527 L1692 669 C1585 725 1490 738 1388 705 C1265 665 1196 602 1050 642 Z" fill="#d90812" opacity=".88"/>' +
 
-      '<image href="' + logoData + '" x="122" y="74" width="620" height="218" preserveAspectRatio="xMinYMid meet"/>' +
+      '<image href="' + logoData + '" x="112" y="62" width="650" height="245" preserveAspectRatio="xMinYMid meet"/>' +
       '<text x="126" y="384" class="sans" font-size="29" font-weight="500" fill="#171717" letter-spacing="11">COLEGIO AGUSTINOS GRANADA</text>' +
 
       '<rect x="1171" y="70" width="455" height="150" rx="42" fill="url(#badgeGradient)" filter="url(#panelShadow)"/>' +
@@ -172,8 +172,8 @@ export async function renderMembershipCardPng(
       '<text x="218" y="1009" class="sans" font-size="52" font-weight="800" fill="#171717">' + escapeXml(displayYear) + '</text>' +
 
       '<g transform="rotate(-3 1310 956)">' +
-        '<text x="1068" y="970" class="script" font-size="57" font-weight="600" fill="#ef1721">Acompañar hacia la Verdad</text>' +
-        '<path d="M1146 1002 C1272 965 1430 977 1587 984" fill="none" stroke="#ef1721" stroke-width="6" stroke-linecap="round"/>' +
+        '<text x="1015" y="970" class="script" font-size="47" font-weight="600" fill="#ef1721">Acompañar hacia la Verdad</text>' +
+        '<path d="M1088 1002 C1215 965 1395 977 1602 984" fill="none" stroke="#ef1721" stroke-width="6" stroke-linecap="round"/>' +
       '</g>' +
 
       '<path d="M20 891 C258 819 441 864 621 946 C736 999 817 1033 934 1060 L20 1060 Z" fill="#f24851" opacity=".07"/>' +
