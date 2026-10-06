@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, ChevronLeft, FileDown, ImagePlus, Pencil, Plus, Save, Search, Trash2,
-  UserRound, Users, Baby, X, BarChart3, Percent
+  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
@@ -18,11 +18,13 @@ interface Props {
   onNotify: (type:'success'|'error'|'info',title:string,message?:string)=>void;
 }
 
-type EventDraft = Pick<EventDetail,'title'|'eventDate'|'description'|'imageDataUrl'> & { id?: string };
+type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'> & { id?: string };
+type EventViewMode = 'table' | 'list' | 'cards';
 
-const emptyDraft = ():EventDraft => ({
+const emptyDraft = (academicYear:string):EventDraft => ({
   title:'',
   eventDate:new Date().toISOString().slice(0,10),
+  academicYear,
   description:'',
   imageDataUrl:'',
 });
@@ -77,11 +79,22 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   const [familyQuery,setFamilyQuery]=useState('');
   const [onlySelected,setOnlySelected]=useState(false);
   const [editingAttendance,setEditingAttendance]=useState(false);
+  const [eventQuery,setEventQuery]=useState('');
+  const [academicYearFilter,setAcademicYearFilter]=useState('all');
+  const [eventView,setEventView]=useState<EventViewMode>('cards');
 
-  const orderedEvents=useMemo(
-    ()=>[...events].sort((a,b)=>b.eventDate.localeCompare(a.eventDate) || a.title.localeCompare(b.title,'es')),
-    [events]
-  );
+  const academicYears=useMemo(()=>Array.from(new Set([
+    settings.activeAcademicYear,
+    ...events.map((event)=>event.academicYear).filter(Boolean),
+  ])).sort((a,b)=>b.localeCompare(a)),[events,settings.activeAcademicYear]);
+
+  const visibleEvents=useMemo(()=>{
+    const q=eventQuery.trim().toLocaleLowerCase('es');
+    return [...events]
+      .filter((event)=>academicYearFilter==='all' || event.academicYear===academicYearFilter)
+      .filter((event)=>!q || event.title.toLocaleLowerCase('es').includes(q))
+      .sort((a,b)=>b.eventDate.localeCompare(a.eventDate) || a.title.localeCompare(b.title,'es'));
+  },[events,eventQuery,academicYearFilter]);
 
   const filteredFamilies=useMemo(()=>{
     const q=familyQuery.trim().toLowerCase();
@@ -204,8 +217,8 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   };
 
   const saveEvent=async()=>{
-    if(!draft?.title.trim() || !draft.eventDate){
-      onNotify('error','Faltan datos','Indique al menos el título y la fecha.');
+    if(!draft?.title.trim() || !draft.eventDate || !draft.academicYear.trim()){
+      onNotify('error','Faltan datos','Indique el título, la fecha y el curso escolar.');
       return;
     }
     setSavingEvent(true);
@@ -268,12 +281,12 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
           <div className="p-5 sm:p-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-500">{dateLabel(detail.eventDate)}</div>
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[.2em] text-indigo-500"><span>{dateLabel(detail.eventDate)}</span><span className="rounded-full bg-indigo-50 px-2 py-1 tracking-normal text-indigo-700">Curso {detail.academicYear}</span></div>
                 <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{detail.title}</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{detail.description || 'Sin descripción.'}</p>
               </div>
               {canEdit&&<div className="flex gap-2">
-                <button type="button" onClick={()=>setDraft({id:detail.id,title:detail.title,eventDate:detail.eventDate,description:detail.description,imageDataUrl:detail.imageDataUrl})} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
+                <button type="button" onClick={()=>setDraft({id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,description:detail.description,imageDataUrl:detail.imageDataUrl})} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
                 {canDelete&&<button type="button" onClick={()=>void removeEvent()} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-3 text-rose-600"><Trash2 size={15}/></button>}
               </div>}
             </div>
@@ -419,7 +432,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
           <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-[32px]">Participación del AMPA</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Cree actividades, gestione asistentes por unidad familiar y mida la participación real de la asociación.</p>
         </div>
-        {canEdit&&<button type="button" onClick={()=>setDraft(emptyDraft())} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white shadow-[0_10px_25px_rgba(15,23,42,.18)]"><Plus size={16}/> Nuevo evento</button>}
+        {canEdit&&<button type="button" onClick={()=>setDraft(emptyDraft(settings.activeAcademicYear))} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white shadow-[0_10px_25px_rgba(15,23,42,.18)]"><Plus size={16}/> Nuevo evento</button>}
       </div>
       <div className="relative mt-6 grid gap-2 sm:grid-cols-3">
         <div className="rounded-[20px] border border-white bg-white/75 p-3.5 shadow-sm"><CalendarDays size={16} className="text-indigo-400"/><div className="mt-3 text-2xl font-black">{events.length}</div><div className="mt-1 text-[10px] font-bold text-slate-400">Eventos registrados</div></div>
@@ -428,23 +441,72 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       </div>
     </section>
 
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {orderedEvents.map(event=><button key={event.id} type="button" onClick={()=>void loadDetail(event.id)} className="group overflow-hidden rounded-[28px] border border-white/70 bg-white/90 text-left shadow-[0_16px_40px_rgba(71,85,105,.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(71,85,105,.12)]">
-        <div className="relative h-36 bg-gradient-to-br from-indigo-100 via-violet-100 to-rose-100">
-          {event.imageDataUrl?<img src={event.imageDataUrl} alt="" className="h-full w-full object-cover"/>:<div className="flex h-full items-center justify-center"><CalendarDays size={40} className="text-indigo-300"/></div>}
-          <span className="absolute left-3 top-3 rounded-xl bg-white/90 px-2.5 py-1.5 text-[10px] font-black text-slate-700 shadow-sm backdrop-blur">{dateLabel(event.eventDate)}</span>
+    <section className="rounded-[30px] border border-white/70 bg-white/90 p-4 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-5">
+      <div className="grid gap-3 lg:grid-cols-[1fr_190px_auto]">
+        <label className="relative block">
+          <Search size={17} className="absolute left-4 top-3.5 text-slate-400"/>
+          <input value={eventQuery} onChange={(e)=>setEventQuery(e.target.value)} placeholder="Buscar actividad por nombre…" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-slate-50/80 pl-11 pr-4 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"/>
+        </label>
+        <select value={academicYearFilter} onChange={(e)=>setAcademicYearFilter(e.target.value)} className="min-h-11 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600">
+          <option value="all">Todos los cursos</option>
+          {academicYears.map((year)=><option key={year} value={year}>{year}</option>)}
+        </select>
+        <div className="flex rounded-2xl bg-slate-100 p-1">
+          <button type="button" onClick={()=>setEventView('table')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${eventView==='table'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><Table2 size={14}/> Tabla</button>
+          <button type="button" onClick={()=>setEventView('list')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${eventView==='list'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><Rows3 size={14}/> Lista</button>
+          <button type="button" onClick={()=>setEventView('cards')} className={`flex min-h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-extrabold transition ${eventView==='cards'?'bg-white text-slate-900 shadow-sm':'text-slate-400'}`}><LayoutGrid size={14}/> Tarjetas</button>
         </div>
-        <div className="p-4">
-          <h2 className="truncate text-base font-black text-slate-900">{event.title}</h2>
-          <p className="mt-1 line-clamp-2 min-h-9 text-[11px] leading-4 text-slate-500">{event.description||'Sin descripción.'}</p>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Familias · {event.familyParticipationRate}%</div></div>
-            <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Participantes · {event.censusParticipationRate}%</div></div>
+      </div>
+      <div className="mt-3 text-[10px] font-semibold text-slate-400">{visibleEvents.length} de {events.length} actividades</div>
+    </section>
+
+    {eventView==='cards' ? (
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {visibleEvents.map(event=><button key={event.id} type="button" onClick={()=>void loadDetail(event.id)} className="group overflow-hidden rounded-[28px] border border-white/70 bg-white/90 text-left shadow-[0_16px_40px_rgba(71,85,105,.08)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(71,85,105,.12)]">
+          <div className="relative h-36 bg-gradient-to-br from-indigo-100 via-violet-100 to-rose-100">
+            {event.imageDataUrl?<img src={event.imageDataUrl} alt="" className="h-full w-full object-cover"/>:<div className="flex h-full items-center justify-center"><CalendarDays size={40} className="text-indigo-300"/></div>}
+            <span className="absolute left-3 top-3 rounded-xl bg-white/90 px-2.5 py-1.5 text-[10px] font-black text-slate-700 shadow-sm backdrop-blur">{dateLabel(event.eventDate)}</span>
+            <span className="absolute right-3 top-3 rounded-xl bg-indigo-600/90 px-2.5 py-1.5 text-[10px] font-black text-white shadow-sm backdrop-blur">{event.academicYear}</span>
           </div>
+          <div className="p-4">
+            <h2 className="truncate text-base font-black text-slate-900">{event.title}</h2>
+            <p className="mt-1 line-clamp-2 min-h-9 text-[11px] leading-4 text-slate-500">{event.description||'Sin descripción.'}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Familias · {event.familyParticipationRate}%</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Participantes · {event.censusParticipationRate}%</div></div>
+            </div>
+          </div>
+        </button>)}
+      </div>
+    ) : eventView==='list' ? (
+      <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
+        <div className="divide-y divide-slate-100">
+          {visibleEvents.map((event)=><button key={event.id} type="button" onClick={()=>void loadDetail(event.id)} className="grid w-full gap-1 px-4 py-3 text-left transition hover:bg-indigo-50/40 sm:grid-cols-[95px_1fr_100px_100px] sm:items-center sm:gap-3">
+            <span className="text-[10px] font-black text-indigo-600">{dateLabel(event.eventDate)}</span>
+            <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-900">{event.title}</span><span className="block truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</span></span>
+            <span className="w-fit rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-black text-indigo-700">{event.academicYear}</span>
+            <span className="text-[10px] font-bold text-slate-500">{event.familyCount} fam. · {event.participantCount} pers.</span>
+          </button>)}
         </div>
-      </button>)}
-      {!events.length&&<div className="md:col-span-2 xl:col-span-3 rounded-[28px] border-2 border-dashed border-white/80 bg-white/65 p-12 text-center"><CalendarDays size={30} className="mx-auto text-slate-300"/><div className="mt-3 text-sm font-black text-slate-500">Todavía no hay eventos</div><div className="mt-1 text-xs text-slate-400">Cree el primero para comenzar a medir la participación.</div></div>}
-    </div>
+      </div>
+    ) : (
+      <div className="overflow-x-auto rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
+        <table className="min-w-[760px] w-full border-collapse text-left">
+          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Familias</th><th className="px-4 py-3 text-right">Participantes</th><th className="px-4 py-3 text-right">% familias</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {visibleEvents.map((event)=><tr key={event.id} onClick={()=>void loadDetail(event.id)} className="cursor-pointer transition hover:bg-indigo-50/40">
+              <td className="whitespace-nowrap px-4 py-3 text-[11px] font-bold text-indigo-600">{dateLabel(event.eventDate)}</td>
+              <td className="max-w-[360px] px-4 py-3"><div className="truncate text-xs font-black text-slate-900">{event.title}</div><div className="truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</div></td>
+              <td className="whitespace-nowrap px-4 py-3 text-[10px] font-black text-slate-600">{event.academicYear}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.familyCount}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.participantCount}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{event.familyParticipationRate}%</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div>
+    )}
+    {!visibleEvents.length&&<div className="rounded-[28px] border-2 border-dashed border-white/80 bg-white/65 p-12 text-center"><CalendarDays size={30} className="mx-auto text-slate-300"/><div className="mt-3 text-sm font-black text-slate-500">No hay actividades que coincidan</div><div className="mt-1 text-xs text-slate-400">{events.length?'Cambie el nombre buscado o el filtro de curso.':'Cree el primer evento para comenzar a medir la participación.'}</div></div>}
     {loadingDetail&&<div className="rounded-2xl bg-white/80 p-4 text-center text-xs font-bold text-slate-400">Cargando evento…</div>}
     {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
   </div>;
@@ -466,9 +528,10 @@ function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
         <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-slate-100"><X size={20}/></button>
       </div>
       <div className="space-y-5 p-5 sm:p-6">
-        <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
+        <div className="grid gap-4 sm:grid-cols-[1fr_180px_150px]">
           <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Título</span><input value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm font-bold" placeholder="Ej. Visita a los Bosques de la Alhambra"/></label>
           <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha</span><input type="date" value={draft.eventDate} onChange={e=>setDraft({...draft,eventDate:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm"/></label>
+          <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso escolar</span><input value={draft.academicYear} onChange={e=>setDraft({...draft,academicYear:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm font-bold" placeholder="2026/2027" inputMode="numeric"/></label>
         </div>
         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Descripción breve</span><textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} rows={4} className="w-full rounded-2xl border border-slate-200 p-3 text-sm leading-6" placeholder="Objetivo, lugar o información útil de la actividad."/></label>
         <div>
