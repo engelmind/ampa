@@ -48,9 +48,9 @@ export const backendApi = {
 
   getEvents: () => request<{ events: EventSummary[]; totals: { activeFamilies: number; censusPeople: number } }>('/api/events'),
   getEvent: (id: string) => request<{ event: EventDetail }>(`/api/events/${id}`),
-  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'description' | 'imageDataUrl'>) =>
+  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl'>) =>
     request<{ event: { id: string } }>('/api/events', { method:'POST', body:JSON.stringify(event) }),
-  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'description' | 'imageDataUrl'>) =>
+  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl'>) =>
     request<{ ok:boolean }>(`/api/events/${event.id}`, { method:'PUT', body:JSON.stringify(event) }),
   deleteEvent: (id:string) =>
     request<{ ok:boolean }>(`/api/events/${id}`, { method:'DELETE' }),
