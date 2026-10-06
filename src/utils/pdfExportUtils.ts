@@ -219,7 +219,7 @@ export function createEventParticipantsPdfArtifact(event:EventDetail,families:Fa
       4:{cellWidth:72},
       5:{cellWidth:'auto'},
     },
-    `${date} · ${familyCount} familias · ${rows.length} participantes`,
+    `${date} · Curso ${event.academicYear} · ${familyCount} familias · ${rows.length} participantes`,
     'landscape'
   );
 }
