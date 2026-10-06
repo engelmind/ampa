@@ -49,6 +49,7 @@ export interface FamilyEventRecord {
   eventId: string;
   title: string;
   eventDate: string;
+  academicYear: string;
   participantCount: number;
   participantNames: string[];
 }
@@ -57,6 +58,7 @@ export interface EventSummary {
   id: string;
   title: string;
   eventDate: string;
+  academicYear: string;
   description: string;
   imageDataUrl?: string;
   familyCount: number;
@@ -79,6 +81,7 @@ export interface EventDetail {
   id: string;
   title: string;
   eventDate: string;
+  academicYear: string;
   description: string;
   imageDataUrl?: string;
   familyIds: string[];
