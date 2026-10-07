@@ -504,16 +504,6 @@ Deno.serve(async (req: Request) => {
       const rows=await sql`select * from events where registration_token=${token}::uuid limit 1`;
       if(!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const e=rows[0];
-      const counts=await sql`
-        select
-          count(distinct r.family_id) filter (where r.status='confirmed')::int as confirmed_families,
-          count(a.person_id) filter (where r.status='confirmed')::int as confirmed_participants,
-          count(distinct r.family_id) filter (where r.status='waitlist')::int as waitlist_families
-        from event_registrations r
-        left join event_registration_attendees a on a.registration_id=r.id
-        where r.event_id=${e.id}::uuid`;
-      const confirmedParticipants=counts[0]?.confirmed_participants||0;
-      const capacity=e.registration_capacity==null?null:Number(e.registration_capacity);
       return reply({event:{
         title:e.title,
         eventDate:isoDateFromDb(e.event_date),
@@ -522,14 +512,11 @@ Deno.serve(async (req: Request) => {
         imageDataUrl:e.image_data_url||'',
         registrationEnabled:e.registration_enabled,
         registrationDeadline:e.registration_deadline,
-        registrationCapacity:capacity,
+        registrationCapacity:e.registration_capacity==null?null:Number(e.registration_capacity),
         maxAttendeesPerFamily:e.max_attendees_per_family,
         registrationMessage:e.registration_message||'',
-        isOpen:await eventRegistrationOpen(e),
-        confirmedFamilies:counts[0]?.confirmed_families||0,
-        confirmedParticipants,
-        waitlistFamilies:counts[0]?.waitlist_families||0,
-        remainingSeats:capacity==null?null:Math.max(0,capacity-confirmedParticipants)
+        registrationAudience:e.registration_audience||'members_only',
+        isOpen:await eventRegistrationOpen(e)
       }});
     }
 
