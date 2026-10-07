@@ -50,6 +50,9 @@ export interface FamilyEventRecord {
   title: string;
   eventDate: string;
   academicYear: string;
+  registrationStatus?: 'confirmed' | 'waitlist' | 'cancelled' | null;
+  registeredParticipantCount: number;
+  registeredParticipantNames: string[];
   participantCount: number;
   participantNames: string[];
 }
