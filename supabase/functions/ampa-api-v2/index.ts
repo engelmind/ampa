@@ -286,12 +286,12 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
     for (const e of payload.events || []) {
       await tx`insert into events(
           id,title,event_date,academic_year,description,image_data_url,created_by,
-          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_token,
+          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_audience,registration_token,
           created_at,updated_at
         )
         values(
           ${e.id}::uuid,${e.title},${e.event_date}::date,${e.academic_year||''},${e.description||''},${e.image_data_url||null},${e.created_by||null}::uuid,
-          ${!!e.registration_enabled},${e.registration_deadline||null}::timestamptz,${e.registration_capacity||null},${e.max_attendees_per_family||8},${e.registration_message||''},
+          ${!!e.registration_enabled},${e.registration_deadline||null}::timestamptz,${e.registration_capacity||null},${e.max_attendees_per_family||8},${e.registration_message||''},${e.registration_audience||'members_only'},
           coalesce(${e.registration_token||null}::uuid,gen_random_uuid()),
           ${e.created_at||new Date().toISOString()}::timestamptz,${e.updated_at||new Date().toISOString()}::timestamptz
         )`;
@@ -306,8 +306,8 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
         ${ea.participant_name},${ea.created_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const er of payload.eventRegistrations || []) {
-      await tx`insert into event_registrations(id,event_id,family_id,status,verified_email,created_at,updated_at)
-        values(${er.id}::uuid,${er.event_id}::uuid,${er.family_id}::uuid,${er.status||'confirmed'},${er.verified_email||''},
+      await tx`insert into event_registrations(id,event_id,family_id,status,verified_email,registration_kind,created_at,updated_at)
+        values(${er.id}::uuid,${er.event_id}::uuid,${er.family_id}::uuid,${er.status||'confirmed'},${er.verified_email||''},${er.registration_kind||'member'},
         ${er.created_at||new Date().toISOString()}::timestamptz,${er.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const era of payload.eventRegistrationAttendees || []) {
@@ -504,16 +504,6 @@ Deno.serve(async (req: Request) => {
       const rows=await sql`select * from events where registration_token=${token}::uuid limit 1`;
       if(!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const e=rows[0];
-      const counts=await sql`
-        select
-          count(distinct r.family_id) filter (where r.status='confirmed')::int as confirmed_families,
-          count(a.person_id) filter (where r.status='confirmed')::int as confirmed_participants,
-          count(distinct r.family_id) filter (where r.status='waitlist')::int as waitlist_families
-        from event_registrations r
-        left join event_registration_attendees a on a.registration_id=r.id
-        where r.event_id=${e.id}::uuid`;
-      const confirmedParticipants=counts[0]?.confirmed_participants||0;
-      const capacity=e.registration_capacity==null?null:Number(e.registration_capacity);
       return reply({event:{
         title:e.title,
         eventDate:isoDateFromDb(e.event_date),
@@ -522,14 +512,11 @@ Deno.serve(async (req: Request) => {
         imageDataUrl:e.image_data_url||'',
         registrationEnabled:e.registration_enabled,
         registrationDeadline:e.registration_deadline,
-        registrationCapacity:capacity,
+        registrationCapacity:e.registration_capacity==null?null:Number(e.registration_capacity),
         maxAttendeesPerFamily:e.max_attendees_per_family,
         registrationMessage:e.registration_message||'',
-        isOpen:await eventRegistrationOpen(e),
-        confirmedFamilies:counts[0]?.confirmed_families||0,
-        confirmedParticipants,
-        waitlistFamilies:counts[0]?.waitlist_families||0,
-        remainingSeats:capacity==null?null:Math.max(0,capacity-confirmedParticipants)
+        registrationAudience:e.registration_audience||'members_only',
+        isOpen:await eventRegistrationOpen(e)
       }});
     }
 
@@ -603,6 +590,121 @@ Deno.serve(async (req: Request) => {
         return reply({error:'EMAIL_PROVIDER_FAILED'},502);
       }
       return reply({ok:true,mode:'otp',challengeId});
+    }
+
+    const publicGuestMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/guest-register$/i);
+    if(publicGuestMatch && req.method==='POST'){
+      const token=publicGuestMatch[1];
+      const body=await readBody(req);
+      const familyName=String(body.familyName||'').trim().slice(0,160);
+      const contactName=String(body.contactName||'').trim().slice(0,160);
+      const email=String(body.email||'').trim().toLowerCase().slice(0,254);
+      const phone=String(body.phone||'').trim().slice(0,40);
+      const attendeeNames=Array.isArray(body.attendeeNames)
+        ? body.attendeeNames.map((name:any)=>String(name||'').trim().slice(0,160)).filter(Boolean)
+        : [];
+
+      if(!familyName || !contactName || !email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return reply({error:'INVALID_GUEST_DATA'},400);
+
+      const events=await sql`select * from events where registration_token=${token}::uuid limit 1`;
+      if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const event=events[0];
+      if((event.registration_audience||'members_only')!=='public') return reply({error:'MEMBERS_ONLY_EVENT'},403);
+      if(!event.registration_enabled || !await eventRegistrationOpen(event)) return reply({error:'REGISTRATION_CLOSED'},409);
+      if(!attendeeNames.length) return reply({error:'NO_ATTENDEES'},400);
+      if(attendeeNames.length>Number(event.max_attendees_per_family||8)) return reply({error:'FAMILY_LIMIT_EXCEEDED'},400);
+
+      let finalStatus='confirmed';
+      let registrationId='';
+      let createdInactiveFamily=false;
+      let resolvedFamilyId='';
+      let resolvedFamilyName=familyName;
+
+      await sql.begin(async tx=>{
+        const lockedRows=await tx`select * from events where id=${event.id}::uuid for update`;
+        const current=lockedRows[0];
+        if(!current || !current.registration_enabled || (current.registration_audience||'members_only')!=='public') {
+          throw Object.assign(new Error('REGISTRATION_CLOSED'),{status:409});
+        }
+
+        const existingFamilies=await tx`
+          select f.id,f.family_name,f.is_active_this_year
+          from families f
+          join guardians g on g.family_id=f.id
+          where lower(trim(coalesce(g.email,'')))=${email}
+          order by f.is_active_this_year desc,g.is_main_contact desc,g.created_at
+          limit 1`;
+
+        if(existingFamilies.length){
+          resolvedFamilyId=existingFamilies[0].id;
+          resolvedFamilyName=existingFamilies[0].family_name;
+        }else{
+          const familyId=crypto.randomUUID();
+          const guestMembership=`INV-${crypto.randomUUID().slice(0,8).toUpperCase()}`;
+          const nameParts=contactName.split(/\s+/).filter(Boolean);
+          const firstName=nameParts.shift()||contactName;
+          const lastName=nameParts.join(' ');
+          await tx`
+            insert into families(id,membership_number,family_name,is_active_this_year,registration_academic_year,notes)
+            values(
+              ${familyId}::uuid,${guestMembership},${familyName},false,null,
+              ${`Alta automática INACTIVA desde inscripción pública al evento: ${event.title}`}
+            )`;
+          await tx`
+            insert into guardians(family_id,first_name,last_name,relationship,phone,email,is_main_contact)
+            values(${familyId}::uuid,${firstName},${lastName},'otro',${phone||null},${email},true)`;
+          resolvedFamilyId=familyId;
+          createdInactiveFamily=true;
+        }
+
+        const occupiedRows=await tx`
+          select count(*)::int as count
+          from event_registration_attendees a
+          join event_registrations r on r.id=a.registration_id
+          where r.event_id=${event.id}::uuid and r.status='confirmed' and r.family_id<>${resolvedFamilyId}::uuid`;
+        const occupied=occupiedRows[0]?.count||0;
+        const capacity=current.registration_capacity==null?null:Number(current.registration_capacity);
+        finalStatus=capacity!=null && occupied+attendeeNames.length>capacity ? 'waitlist' : 'confirmed';
+
+        const rows=await tx`
+          insert into event_registrations(event_id,family_id,status,verified_email,registration_kind,updated_at)
+          values(${event.id}::uuid,${resolvedFamilyId}::uuid,${finalStatus},${email},'public',now())
+          on conflict(event_id,family_id) do update set
+            status=excluded.status,
+            verified_email=excluded.verified_email,
+            registration_kind=case when event_registrations.registration_kind='member' then 'member' else 'public' end,
+            updated_at=now()
+          returning id`;
+        registrationId=rows[0].id;
+        await tx`delete from event_registration_attendees where registration_id=${registrationId}::uuid`;
+        for(const name of attendeeNames){
+          await tx`
+            insert into event_registration_attendees(registration_id,person_type,person_id,participant_name)
+            values(${registrationId}::uuid,'guardian',${crypto.randomUUID()}::uuid,${name})`;
+        }
+      });
+
+      await promoteEventWaitlist(event.id);
+      const fresh=await sql`select status from event_registrations where id=${registrationId}::uuid limit 1`;
+      finalStatus=fresh[0]?.status||finalStatus;
+      let waitlistPosition:null|number=null;
+      if(finalStatus==='waitlist'){
+        const pos=await sql`
+          select count(*)::int as position
+          from event_registrations r
+          where r.event_id=${event.id}::uuid and r.status='waitlist'
+            and r.created_at <= (select created_at from event_registrations where id=${registrationId}::uuid)`;
+        waitlistPosition=pos[0]?.position||1;
+      }
+
+      const statusText=finalStatus==='confirmed'?'confirmada':'en lista de espera';
+      await sendRegistrationMail(
+        email,
+        `Inscripción ${statusText} · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Inscripción ${statusText}</h2><p>La inscripción de <strong>${escapeHtmlValue(resolvedFamilyName)}</strong> para <strong>${escapeHtmlValue(event.title)}</strong> ha quedado <strong>${statusText}</strong>.</p><p>Personas incluidas: <strong>${attendeeNames.length}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+      ).catch(()=>null);
+
+      return reply({ok:true,status:finalStatus,waitlistPosition,createdInactiveFamily});
     }
 
     const publicVerifyMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/verify-code$/i);
@@ -707,10 +809,10 @@ Deno.serve(async (req: Request) => {
         finalStatus=capacity!=null && occupied+normalized.length>capacity ? 'waitlist' : 'confirmed';
 
         const rows=await tx`
-          insert into event_registrations(event_id,family_id,status,verified_email,updated_at)
-          values(${event.id}::uuid,${session.family_id}::uuid,${finalStatus},${session.verified_email},now())
+          insert into event_registrations(event_id,family_id,status,verified_email,registration_kind,updated_at)
+          values(${event.id}::uuid,${session.family_id}::uuid,${finalStatus},${session.verified_email},'member',now())
           on conflict(event_id,family_id) do update set
-            status=excluded.status,verified_email=excluded.verified_email,updated_at=now()
+            status=excluded.status,verified_email=excluded.verified_email,registration_kind='member',updated_at=now()
           returning id`;
         registrationId=rows[0].id;
         await tx`delete from event_registration_attendees where registration_id=${registrationId}::uuid`;
@@ -935,6 +1037,7 @@ Deno.serve(async (req: Request) => {
           registrationCapacity:e.registration_capacity==null?null:Number(e.registration_capacity),
           maxAttendeesPerFamily:e.max_attendees_per_family||8,
           registrationMessage:e.registration_message||'',
+          registrationAudience:e.registration_audience||'members_only',
           registeredFamilyCount:reg.registered_family_count||0,
           registeredParticipantCount:reg.registered_participant_count||0,
           waitlistFamilyCount:reg.waitlist_family_count||0,
@@ -954,11 +1057,11 @@ Deno.serve(async (req: Request) => {
       if (String(body.imageDataUrl||'').length > 1500000) return reply({error:'EVENT_IMAGE_TOO_LARGE'},413);
       const rows=await sql`insert into events(
           title,event_date,academic_year,description,image_data_url,created_by,
-          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message
+          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_audience
         )
         values(
           ${String(body.title).trim()},${body.eventDate}::date,${academicYear},${String(body.description||'').trim()},${body.imageDataUrl||null},${u.id}::uuid,
-          ${!!body.registrationEnabled},${body.registrationDeadline||null}::timestamptz,${capacity},${maxPerFamily},${String(body.registrationMessage||'').trim().slice(0,2000)}
+          ${!!body.registrationEnabled},${body.registrationDeadline||null}::timestamptz,${capacity},${maxPerFamily},${String(body.registrationMessage||'').trim().slice(0,2000)},${body.registrationAudience==='public'?'public':'members_only'}
         )
         returning *`;
       await log(u.id,'event','create',`Evento creado: ${rows[0].title}`,rows[0].id,rows[0].title);
@@ -975,7 +1078,7 @@ Deno.serve(async (req: Request) => {
         sql`select family_id from event_families where event_id=${id}::uuid order by created_at`,
         sql`select id,family_id,person_type,person_id,participant_name from event_attendees where event_id=${id}::uuid order by created_at`,
         sql`
-          select r.id,r.family_id,r.status,r.verified_email,r.created_at,r.updated_at,
+          select r.id,r.family_id,r.status,r.verified_email,r.registration_kind,r.created_at,r.updated_at,
                  f.family_name,f.membership_number,
                  a.person_type,a.person_id,a.participant_name
           from event_registrations r
@@ -989,7 +1092,7 @@ Deno.serve(async (req: Request) => {
         if(!registrationsMap.has(row.id)){
           registrationsMap.set(row.id,{
             id:row.id,familyId:row.family_id,familyName:row.family_name,membershipNumber:row.membership_number,
-            status:row.status,verifiedEmail:row.verified_email,createdAt:row.created_at,updatedAt:row.updated_at,attendees:[]
+            status:row.status,verifiedEmail:row.verified_email,registrationKind:row.registration_kind||'member',createdAt:row.created_at,updatedAt:row.updated_at,attendees:[]
           });
         }
         if(row.person_id) registrationsMap.get(row.id).attendees.push({
@@ -1005,6 +1108,7 @@ Deno.serve(async (req: Request) => {
         registrationCapacity:e.registration_capacity==null?null:Number(e.registration_capacity),
         maxAttendeesPerFamily:e.max_attendees_per_family||8,
         registrationMessage:e.registration_message||'',
+        registrationAudience:e.registration_audience||'members_only',
         familyIds:families.map((x:any)=>x.family_id),
         attendees:attendees.map((a:any)=>({id:a.id,familyId:a.family_id,personType:a.person_type,personId:a.person_id,participantName:a.participant_name})),
         registrations:Array.from(registrationsMap.values())
@@ -1029,6 +1133,7 @@ Deno.serve(async (req: Request) => {
         registration_capacity=${capacity},
         max_attendees_per_family=${maxPerFamily},
         registration_message=${String(body.registrationMessage||'').trim().slice(0,2000)},
+        registration_audience=${body.registrationAudience==='public'?'public':'members_only'},
         updated_at=now()
         where id=${id}::uuid returning title`;
       if (!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);

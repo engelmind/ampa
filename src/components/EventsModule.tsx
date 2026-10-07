@@ -18,7 +18,7 @@ interface Props {
   onNotify: (type:'success'|'error'|'info',title:string,message?:string)=>void;
 }
 
-type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'|'registrationEnabled'|'registrationDeadline'|'registrationCapacity'|'maxAttendeesPerFamily'|'registrationMessage'> & { id?: string };
+type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'|'registrationEnabled'|'registrationDeadline'|'registrationCapacity'|'maxAttendeesPerFamily'|'registrationMessage'|'registrationAudience'> & { id?: string };
 type EventViewMode = 'table' | 'list' | 'cards';
 
 const emptyDraft = (academicYear:string):EventDraft => ({
@@ -32,6 +32,7 @@ const emptyDraft = (academicYear:string):EventDraft => ({
   registrationCapacity:null,
   maxAttendeesPerFamily:8,
   registrationMessage:'',
+  registrationAudience:'members_only',
 });
 
 const toLocalDateTimeInput=(value?:string|null)=>{
@@ -392,7 +393,8 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
                   registrationDeadline:toLocalDateTimeInput(detail.registrationDeadline),
                   registrationCapacity:detail.registrationCapacity,
                   maxAttendeesPerFamily:detail.maxAttendeesPerFamily,
-                  registrationMessage:detail.registrationMessage||''
+                  registrationMessage:detail.registrationMessage||'',
+                  registrationAudience:detail.registrationAudience||'members_only'
                 })} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
                 {canDelete&&<button type="button" onClick={()=>void removeEvent()} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-3 text-rose-600"><Trash2 size={15}/></button>}
               </div>}
@@ -422,6 +424,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${!detail.registrationEnabled?'bg-slate-100 text-slate-500':registrationOpen?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
                 {!detail.registrationEnabled?'Desactivadas':registrationOpen?'Abiertas':'Cerradas'}
               </span>
+              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-black uppercase text-violet-700">{detail.registrationAudience==='public'?'Socios y no socios':'Solo socios'}</span>
             </div>
             <h2 className="mt-1 text-xl font-black text-slate-950">Formulario público para familias</h2>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">{registrationOpen
@@ -470,7 +473,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2"><strong className="text-xs font-black text-slate-900">Familia {registration.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{registration.membershipNumber}</span></div>
-                    <div className="mt-1 text-[10px] text-slate-400">{registration.attendees.map((attendee)=>attendee.participantName).join(' · ') || 'Sin personas seleccionadas'}</div>
+                    <div className="mt-1 text-[10px] text-slate-400">{registration.attendees.map((attendee)=>attendee.participantName).join(' · ') || 'Sin personas seleccionadas'}</div><div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">{registration.registrationKind==='public'?'Inscripción abierta · no socio/sin validación AMPA':'Socio validado'}</div>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${registration.status==='confirmed'?'bg-emerald-50 text-emerald-700':registration.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500'}`}>
                     {registration.status==='confirmed'?'Confirmada':registration.status==='waitlist'?'Espera':'Cancelada'}
@@ -724,8 +727,11 @@ function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
           </div>
 
           <div className="mt-4 space-y-4 border-t border-indigo-100 pt-4">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Quién puede inscribirse</span><select value={draft.registrationAudience} onChange={e=>setDraft({...draft,registrationAudience:e.target.value as 'members_only'|'public'})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700"><option value="members_only">Solo familias socias activas</option><option value="public">Socios y no socios</option></select></label>
               <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha límite</span><input type="datetime-local" value={draft.registrationDeadline||''} onChange={e=>setDraft({...draft,registrationDeadline:e.target.value||null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs"/></label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Aforo máximo</span><input type="number" min={1} value={draft.registrationCapacity??''} onChange={e=>setDraft({...draft,registrationCapacity:e.target.value?Number(e.target.value):null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold" placeholder="Sin límite"/></label>
               <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Máx. por familia</span><input type="number" min={1} max={20} value={draft.maxAttendeesPerFamily} onChange={e=>setDraft({...draft,maxAttendeesPerFamily:Math.max(1,Math.min(20,Number(e.target.value||1)))})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold"/></label>
             </div>
