@@ -71,6 +71,7 @@ export interface EventSummary {
   registrationCapacity?: number | null;
   maxAttendeesPerFamily: number;
   registrationMessage?: string;
+  registrationAudience: 'members_only' | 'public';
   registeredFamilyCount: number;
   registeredParticipantCount: number;
   waitlistFamilyCount: number;
@@ -93,6 +94,7 @@ export interface EventRegistrationRecord {
   membershipNumber: string;
   status: 'confirmed' | 'waitlist' | 'cancelled';
   verifiedEmail: string;
+  registrationKind: 'member' | 'public';
   createdAt: string;
   updatedAt: string;
   attendees: Array<Pick<EventAttendee, 'personType' | 'personId' | 'participantName'>>;
@@ -111,6 +113,7 @@ export interface EventDetail {
   registrationCapacity?: number | null;
   maxAttendeesPerFamily: number;
   registrationMessage?: string;
+  registrationAudience: 'members_only' | 'public';
   familyIds: string[];
   attendees: EventAttendee[];
   registrations: EventRegistrationRecord[];
