@@ -48,9 +48,9 @@ export const backendApi = {
 
   getEvents: () => request<{ events: EventSummary[]; totals: { activeFamilies: number; censusPeople: number } }>('/api/events'),
   getEvent: (id: string) => request<{ event: EventDetail }>(`/api/events/${id}`),
-  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage'>) =>
+  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage' | 'registrationAudience'>) =>
     request<{ event: { id: string } }>('/api/events', { method:'POST', body:JSON.stringify(event) }),
-  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage'>) =>
+  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage' | 'registrationAudience'>) =>
     request<{ ok:boolean }>(`/api/events/${event.id}`, { method:'PUT', body:JSON.stringify(event) }),
   setEventRegistrationEnabled: (id:string, enabled:boolean) =>
     request<{ ok:boolean; registrationEnabled:boolean; registrationDeadline?:string|null; deadlineCleared:boolean }>(
@@ -69,9 +69,16 @@ export const backendApi = {
   getPublicEvent: (token:string) => request<{ event: {
     title:string; eventDate:string; academicYear:string; description:string; imageDataUrl?:string;
     registrationEnabled:boolean; registrationDeadline?:string|null; registrationCapacity?:number|null;
-    maxAttendeesPerFamily:number; registrationMessage?:string; isOpen:boolean;
-    confirmedFamilies:number; confirmedParticipants:number; waitlistFamilies:number; remainingSeats:number|null;
+    maxAttendeesPerFamily:number; registrationMessage?:string; registrationAudience:'members_only'|'public'; isOpen:boolean;
   } }>(`/api/public/events/${encodeURIComponent(token)}`),
+  registerPublicEventGuest: (token:string,payload:{
+    familyName:string; contactName:string; email:string; phone:string; attendeeNames:string[];
+  }) =>
+    request<{ok:boolean;status:'confirmed'|'waitlist';waitlistPosition:number|null;createdInactiveFamily:boolean}>(
+      `/api/public/events/${encodeURIComponent(token)}/guest-register`,
+      {method:'POST',body:JSON.stringify(payload)}
+    ),
+
   requestPublicEventCode: (token:string,membershipNumber:string,email:string) =>
     request<{ ok:boolean; mode:'otp'|'direct'; challengeId?:string; verificationToken?:string }>(
       `/api/public/events/${encodeURIComponent(token)}/request-code`,
