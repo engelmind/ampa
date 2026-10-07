@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, ChevronLeft, FileDown, ImagePlus, Pencil, Plus, Save, Search, Trash2,
-  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid
+  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
@@ -18,7 +18,7 @@ interface Props {
   onNotify: (type:'success'|'error'|'info',title:string,message?:string)=>void;
 }
 
-type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'> & { id?: string };
+type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'|'registrationEnabled'|'registrationDeadline'|'registrationCapacity'|'maxAttendeesPerFamily'|'registrationMessage'> & { id?: string };
 type EventViewMode = 'table' | 'list' | 'cards';
 
 const emptyDraft = (academicYear:string):EventDraft => ({
@@ -27,7 +27,20 @@ const emptyDraft = (academicYear:string):EventDraft => ({
   academicYear,
   description:'',
   imageDataUrl:'',
+  registrationEnabled:false,
+  registrationDeadline:null,
+  registrationCapacity:null,
+  maxAttendeesPerFamily:8,
+  registrationMessage:'',
 });
+
+const toLocalDateTimeInput=(value?:string|null)=>{
+  if(!value) return '';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return '';
+  const pad=(n:number)=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 const dateLabel = (iso:string) => {
   if (!iso) return 'Sin fecha';
@@ -223,8 +236,9 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     }
     setSavingEvent(true);
     try{
-      if(draft.id) await backendApi.updateEvent({id:draft.id,...draft});
-      else await backendApi.createEvent(draft);
+      const payload={...draft,registrationDeadline:draft.registrationDeadline ? new Date(draft.registrationDeadline).toISOString() : null};
+      if(draft.id) await backendApi.updateEvent({id:draft.id,...payload});
+      else await backendApi.createEvent(payload);
       setDraft(null);
       await onReload();
       onNotify('success',draft.id?'Evento actualizado':'Evento creado');
@@ -286,7 +300,15 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{detail.description || 'Sin descripción.'}</p>
               </div>
               {canEdit&&<div className="flex gap-2">
-                <button type="button" onClick={()=>setDraft({id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,description:detail.description,imageDataUrl:detail.imageDataUrl})} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
+                <button type="button" onClick={()=>setDraft({
+                  id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,
+                  description:detail.description,imageDataUrl:detail.imageDataUrl,
+                  registrationEnabled:detail.registrationEnabled,
+                  registrationDeadline:toLocalDateTimeInput(detail.registrationDeadline),
+                  registrationCapacity:detail.registrationCapacity,
+                  maxAttendeesPerFamily:detail.maxAttendeesPerFamily,
+                  registrationMessage:detail.registrationMessage||''
+                })} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
                 {canDelete&&<button type="button" onClick={()=>void removeEvent()} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-3 text-rose-600"><Trash2 size={15}/></button>}
               </div>}
             </div>
