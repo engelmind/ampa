@@ -66,6 +66,15 @@ export const backendApi = {
       method:'PUT',
       body:JSON.stringify({families}),
     }),
+  updateEventRegistration: (
+    eventId:string,
+    registrationId:string,
+    attendees:Array<{personType:'guardian'|'student';personId:string}>
+  ) =>
+    request<{ok:boolean;cancelled:boolean;remainingAttendees:number}>(
+      `/api/events/${eventId}/registrations/${registrationId}`,
+      {method:'PUT',body:JSON.stringify({attendees})}
+    ),
 
   getPublicEvent: (token:string) => request<{ event: {
     title:string; eventDate:string; academicYear:string; description:string; imageDataUrl?:string;
@@ -101,6 +110,15 @@ export const backendApi = {
   savePublicEventRegistration: (token:string,verificationToken:string,attendees:Array<{personType:'guardian'|'student';personId:string}>) =>
     request<{ok:boolean;status:'confirmed'|'waitlist';waitlistPosition:number|null}>(
       `/api/public/events/${encodeURIComponent(token)}/register`,
+      {method:'POST',body:JSON.stringify({verificationToken,attendees})}
+    ),
+  updatePublicEventRegistrationAttendees: (
+    token:string,
+    verificationToken:string,
+    attendees:Array<{personType:'guardian'|'student';personId:string}>
+  ) =>
+    request<{ok:boolean;status:'confirmed'|'waitlist'|'cancelled';remainingAttendees:number}>(
+      `/api/public/events/${encodeURIComponent(token)}/attendees`,
       {method:'POST',body:JSON.stringify({verificationToken,attendees})}
     ),
   cancelPublicEventRegistration: (token:string,verificationToken:string) =>
