@@ -1,7 +1,8 @@
 import { ActivityLogEntry, AppUser, EventAttendanceFamily, EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  const resolvedPath = path.startsWith('/api/') ? `/backend/${path.slice(5)}` : path;
+  const response = await fetch(resolvedPath, {
     ...init,
     credentials: 'include',
     headers: {
