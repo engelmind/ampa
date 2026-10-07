@@ -286,12 +286,12 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
     for (const e of payload.events || []) {
       await tx`insert into events(
           id,title,event_date,academic_year,description,image_data_url,created_by,
-          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_token,
+          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_audience,registration_token,
           created_at,updated_at
         )
         values(
           ${e.id}::uuid,${e.title},${e.event_date}::date,${e.academic_year||''},${e.description||''},${e.image_data_url||null},${e.created_by||null}::uuid,
-          ${!!e.registration_enabled},${e.registration_deadline||null}::timestamptz,${e.registration_capacity||null},${e.max_attendees_per_family||8},${e.registration_message||''},
+          ${!!e.registration_enabled},${e.registration_deadline||null}::timestamptz,${e.registration_capacity||null},${e.max_attendees_per_family||8},${e.registration_message||''},${e.registration_audience||'members_only'},
           coalesce(${e.registration_token||null}::uuid,gen_random_uuid()),
           ${e.created_at||new Date().toISOString()}::timestamptz,${e.updated_at||new Date().toISOString()}::timestamptz
         )`;
@@ -306,8 +306,8 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
         ${ea.participant_name},${ea.created_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const er of payload.eventRegistrations || []) {
-      await tx`insert into event_registrations(id,event_id,family_id,status,verified_email,created_at,updated_at)
-        values(${er.id}::uuid,${er.event_id}::uuid,${er.family_id}::uuid,${er.status||'confirmed'},${er.verified_email||''},
+      await tx`insert into event_registrations(id,event_id,family_id,status,verified_email,registration_kind,created_at,updated_at)
+        values(${er.id}::uuid,${er.event_id}::uuid,${er.family_id}::uuid,${er.status||'confirmed'},${er.verified_email||''},${er.registration_kind||'member'},
         ${er.created_at||new Date().toISOString()}::timestamptz,${er.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const era of payload.eventRegistrationAttendees || []) {
