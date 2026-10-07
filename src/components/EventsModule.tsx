@@ -4,7 +4,7 @@ import {
   UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck, Clock3, TicketCheck, QrCode, Download
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
-import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
+import { EventDetail, EventRegistrationRecord, EventSummary, Family, SystemSettings } from '../types/family';
 import { createEventParticipantsPdfArtifact, downloadPdfArtifact } from '../utils/pdfExportUtils';
 import QRCode from 'qrcode';
 
@@ -361,6 +361,46 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
   };
 
+  const removeRegisteredAttendee=async(registration:EventRegistrationRecord, attendee:EventRegistrationRecord['attendees'][number])=>{
+    if(!detail || !canEdit || registration.status==='cancelled') return;
+    const remaining=registration.attendees.filter((item)=>!(item.personType===attendee.personType && item.personId===attendee.personId));
+    const confirmation=remaining.length
+      ? `¿Dar de baja a ${attendee.participantName} de la inscripción de la familia ${registration.familyName}?`
+      : `Es la última persona inscrita de la familia ${registration.familyName}. Al continuar se cancelará la inscripción completa. ¿Continuar?`;
+    if(!window.confirm(confirmation)) return;
+    try{
+      await backendApi.updateEventRegistration(
+        detail.id,
+        registration.id,
+        remaining.map((item)=>({personType:item.personType,personId:item.personId}))
+      );
+      await onReload();
+      await loadDetail(detail.id);
+      onNotify(
+        'success',
+        remaining.length?'Participante dado de baja':'Inscripción familiar cancelada',
+        remaining.length
+          ? `${attendee.participantName} ya no figura en la actividad.`
+          : `La familia ${registration.familyName} ha quedado dada de baja del evento.`
+      );
+    }catch(error:any){
+      onNotify('error','No se pudo tramitar la baja',error?.message);
+    }
+  };
+
+  const cancelFamilyRegistration=async(registration:EventRegistrationRecord)=>{
+    if(!detail || !canEdit || registration.status==='cancelled') return;
+    if(!window.confirm(`¿Dar de baja a toda la familia ${registration.familyName} de esta actividad? Se liberarán sus plazas y se notificará por email si hay correo disponible.`)) return;
+    try{
+      await backendApi.updateEventRegistration(detail.id,registration.id,[]);
+      await onReload();
+      await loadDetail(detail.id);
+      onNotify('success','Familia dada de baja',`Se ha cancelado la inscripción de la familia ${registration.familyName}.`);
+    }catch(error:any){
+      onNotify('error','No se pudo cancelar la inscripción',error?.message);
+    }
+  };
+
   const loadConfirmedRegistrationsAsAttendance=async()=>{
     if(!detail || !canEdit) return;
     const confirmed=detail.registrations.filter((registration)=>registration.status==='confirmed');
@@ -541,14 +581,26 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               })
               .map((registration)=><div key={registration.id} className={`rounded-[22px] border p-3.5 ${registration.status==='cancelled'?'border-slate-100 bg-slate-50 opacity-60':'border-slate-100 bg-white'}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><strong className="text-xs font-black text-slate-900">Familia {registration.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{registration.membershipNumber}</span></div>
-                    <div className="mt-1 text-[10px] text-slate-400">{registration.attendees.map((attendee)=>attendee.participantName).join(' · ') || 'Sin personas seleccionadas'}</div><div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">{registration.registrationKind==='public'?'Inscripción abierta · no socio/sin validación AMPA':'Socio validado'}</div>
+                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">{registration.registrationKind==='public'?'Inscripción abierta · no socio/sin validación AMPA':'Socio validado'}</div>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${registration.status==='confirmed'?'bg-emerald-50 text-emerald-700':registration.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500'}`}>
                     {registration.status==='confirmed'?'Confirmada':registration.status==='waitlist'?'Espera':'Cancelada'}
                   </span>
                 </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {registration.attendees.map((attendee)=><div key={attendee.personType+attendee.personId} className="flex items-center gap-1.5 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-1.5">
+                    <span className="text-[10px] font-bold text-slate-600">{attendee.participantName}</span>
+                    {canEdit&&registration.status!=='cancelled'&&<button type="button" onClick={()=>void removeRegisteredAttendee(registration,attendee)} className="rounded-lg p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" title={`Dar de baja a ${attendee.participantName}`} aria-label={`Dar de baja a ${attendee.participantName}`}><X size={12}/></button>}
+                  </div>)}
+                  {!registration.attendees.length&&<span className="text-[10px] text-slate-400">Sin personas seleccionadas</span>}
+                </div>
+
+                {canEdit&&registration.status!=='cancelled'&&<div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
+                  <button type="button" onClick={()=>void cancelFamilyRegistration(registration)} className="flex min-h-9 items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 text-[10px] font-extrabold text-rose-600 transition hover:bg-rose-50"><Trash2 size={13}/> Dar de baja a toda la familia</button>
+                </div>}
               </div>)}
             {!detail.registrations.length&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-7 text-center text-xs text-slate-400">Aún no se ha recibido ninguna inscripción.</div>}
           </div>
