@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, ChevronLeft, FileDown, ImagePlus, Pencil, Plus, Save, Search, Trash2,
-  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid
+  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck, Clock3, TicketCheck
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
@@ -18,7 +18,7 @@ interface Props {
   onNotify: (type:'success'|'error'|'info',title:string,message?:string)=>void;
 }
 
-type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'> & { id?: string };
+type EventDraft = Pick<EventDetail,'title'|'eventDate'|'academicYear'|'description'|'imageDataUrl'|'registrationEnabled'|'registrationDeadline'|'registrationCapacity'|'maxAttendeesPerFamily'|'registrationMessage'> & { id?: string };
 type EventViewMode = 'table' | 'list' | 'cards';
 
 const emptyDraft = (academicYear:string):EventDraft => ({
@@ -27,7 +27,20 @@ const emptyDraft = (academicYear:string):EventDraft => ({
   academicYear,
   description:'',
   imageDataUrl:'',
+  registrationEnabled:false,
+  registrationDeadline:null,
+  registrationCapacity:null,
+  maxAttendeesPerFamily:8,
+  registrationMessage:'',
 });
+
+const toLocalDateTimeInput=(value?:string|null)=>{
+  if(!value) return '';
+  const d=new Date(value);
+  if(Number.isNaN(d.getTime())) return '';
+  const pad=(n:number)=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 const dateLabel = (iso:string) => {
   if (!iso) return 'Sin fecha';
@@ -223,8 +236,9 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     }
     setSavingEvent(true);
     try{
-      if(draft.id) await backendApi.updateEvent({id:draft.id,...draft});
-      else await backendApi.createEvent(draft);
+      const payload={...draft,registrationDeadline:draft.registrationDeadline ? new Date(draft.registrationDeadline).toISOString() : null};
+      if(draft.id) await backendApi.updateEvent({id:draft.id,...payload});
+      else await backendApi.createEvent(payload);
       setDraft(null);
       await onReload();
       onNotify('success',draft.id?'Evento actualizado':'Evento creado');
@@ -256,6 +270,51 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     downloadPdfArtifact(createEventParticipantsPdfArtifact(detail,families,settings));
   };
 
+  const copyRegistrationLink=async()=>{
+    if(!detail?.registrationToken) return;
+    const url=`${window.location.origin}/inscripcion/${detail.registrationToken}`;
+    try{
+      await navigator.clipboard.writeText(url);
+      onNotify('success','Enlace copiado','Ya puede compartir el formulario de inscripción.');
+    }catch{
+      onNotify('info','Enlace de inscripción',url);
+    }
+  };
+
+  const loadConfirmedRegistrationsAsAttendance=async()=>{
+    if(!detail || !canEdit) return;
+    const confirmed=detail.registrations.filter((registration)=>registration.status==='confirmed');
+    if(!confirmed.length){
+      onNotify('info','Sin inscripciones confirmadas','Todavía no hay familias confirmadas que cargar.');
+      return;
+    }
+    const participantTotal=confirmed.reduce((total,registration)=>total+registration.attendees.length,0);
+    const warning=detail.attendees.length
+      ? `Esto sustituirá la participación guardada actualmente por ${confirmed.length} familias y ${participantTotal} personas inscritas y confirmadas. ¿Continuar?`
+      : `Se cargarán como participación ${confirmed.length} familias y ${participantTotal} personas confirmadas. ¿Continuar?`;
+    if(!window.confirm(warning)) return;
+    setSavingAttendance(true);
+    try{
+      const payload=confirmed.map((registration)=>({
+        familyId:registration.familyId,
+        attendees:registration.attendees.map((attendee)=>({
+          personType:attendee.personType,
+          personId:attendee.personId,
+          participantName:attendee.participantName,
+        }))
+      }));
+      const result=await backendApi.saveEventAttendance(detail.id,payload);
+      await onReload();
+      await loadDetail(detail.id);
+      setEditingAttendance(false);
+      onNotify('success','Inscritos cargados como participación',`${result.families} familias · ${result.participants} personas.`);
+    }catch(error:any){
+      onNotify('error','No se pudieron cargar las inscripciones',error?.message);
+    }finally{
+      setSavingAttendance(false);
+    }
+  };
+
   const acceptImage=async(file?:File)=>{
     if(!file || !draft) return;
     try{
@@ -270,6 +329,13 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     const summary=events.find(e=>e.id===detail.id);
     const familyRate=totals.activeFamilies ? Math.round((selectedFamilies.size/totals.activeFamilies)*1000)/10 : 0;
     const censusRate=totals.censusPeople ? Math.round((selectedParticipantCount/totals.censusPeople)*1000)/10 : 0;
+    const confirmedRegistrations=detail.registrations.filter((registration)=>registration.status==='confirmed');
+    const waitlistRegistrations=detail.registrations.filter((registration)=>registration.status==='waitlist');
+    const cancelledRegistrations=detail.registrations.filter((registration)=>registration.status==='cancelled');
+    const registeredParticipants=confirmedRegistrations.reduce((total,registration)=>total+registration.attendees.length,0);
+    const registrationLink=`${window.location.origin}/inscripcion/${detail.registrationToken}`;
+    const deadlineTime=detail.registrationDeadline ? new Date(detail.registrationDeadline).getTime() : new Date(detail.eventDate+'T23:59:59').getTime();
+    const registrationOpen=detail.registrationEnabled && Number.isFinite(deadlineTime) && deadlineTime>=Date.now();
     return <div className="space-y-4">
       <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white/90 shadow-[0_18px_50px_rgba(71,85,105,.09)]">
         <div className="grid lg:grid-cols-[280px_1fr]">
@@ -286,7 +352,15 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{detail.description || 'Sin descripción.'}</p>
               </div>
               {canEdit&&<div className="flex gap-2">
-                <button type="button" onClick={()=>setDraft({id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,description:detail.description,imageDataUrl:detail.imageDataUrl})} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
+                <button type="button" onClick={()=>setDraft({
+                  id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,
+                  description:detail.description,imageDataUrl:detail.imageDataUrl,
+                  registrationEnabled:detail.registrationEnabled,
+                  registrationDeadline:toLocalDateTimeInput(detail.registrationDeadline),
+                  registrationCapacity:detail.registrationCapacity,
+                  maxAttendeesPerFamily:detail.maxAttendeesPerFamily,
+                  registrationMessage:detail.registrationMessage||''
+                })} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
                 {canDelete&&<button type="button" onClick={()=>void removeEvent()} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-3 text-rose-600"><Trash2 size={15}/></button>}
               </div>}
             </div>
@@ -305,6 +379,72 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             {summary&&<div className="mt-3 text-[10px] font-semibold text-slate-400">Referencia guardada: {summary.familyCount} familias · {summary.participantCount} participantes</div>}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-500">Inscripciones online</div>
+              <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${!detail.registrationEnabled?'bg-slate-100 text-slate-500':registrationOpen?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
+                {!detail.registrationEnabled?'Desactivadas':registrationOpen?'Abiertas':'Cerradas'}
+              </span>
+            </div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">Formulario público para familias</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Las familias se identifican contra la base AMPA, seleccionan quién asistirá y quedan separadas de la asistencia real hasta el día del evento.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {detail.registrationEnabled&&<>
+              <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600 shadow-sm"><Copy size={14}/> Copiar enlace</button>
+              <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-2xl bg-indigo-600 px-3 text-xs font-extrabold text-white shadow-sm"><ExternalLink size={14}/> Abrir formulario</a>
+            </>}
+          </div>
+        </div>
+
+        {detail.registrationEnabled ? <>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[20px] bg-emerald-50 p-3.5"><Users size={15} className="text-emerald-600"/><div className="mt-2 text-2xl font-black text-slate-950">{confirmedRegistrations.length}</div><div className="text-[10px] font-bold text-emerald-700">Familias confirmadas</div></div>
+            <div className="rounded-[20px] bg-indigo-50 p-3.5"><UserRound size={15} className="text-indigo-600"/><div className="mt-2 text-2xl font-black text-slate-950">{registeredParticipants}</div><div className="text-[10px] font-bold text-indigo-700">Personas inscritas</div></div>
+            <div className="rounded-[20px] bg-amber-50 p-3.5"><Clock3 size={15} className="text-amber-600"/><div className="mt-2 text-2xl font-black text-slate-950">{waitlistRegistrations.length}</div><div className="text-[10px] font-bold text-amber-700">Familias en espera</div></div>
+            <div className="rounded-[20px] bg-slate-50 p-3.5"><TicketCheck size={15} className="text-slate-500"/><div className="mt-2 text-2xl font-black text-slate-950">{detail.registrationCapacity??'∞'}</div><div className="text-[10px] font-bold text-slate-500">Aforo máximo</div></div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+            <div className="flex items-start gap-2"><Link2 size={15} className="mt-0.5 shrink-0 text-indigo-500"/><div className="min-w-0"><div className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Enlace público</div><div className="mt-1 break-all font-mono text-[10px] text-indigo-900">{registrationLink}</div></div></div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Solicitudes recibidas</div>
+              <div className="mt-1 text-xs text-slate-500">{detail.registrations.length-cancelledRegistrations.length} activas · {cancelledRegistrations.length} canceladas</div>
+            </div>
+            {canEdit&&confirmedRegistrations.length>0&&<button type="button" disabled={savingAttendance} onClick={()=>void loadConfirmedRegistrationsAsAttendance()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-3 text-xs font-extrabold text-indigo-700 disabled:opacity-50"><ClipboardCheck size={15}/> Cargar confirmados como asistencia</button>}
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {detail.registrations
+              .slice()
+              .sort((a,b)=>{
+                const rank=(status:string)=>status==='confirmed'?0:status==='waitlist'?1:2;
+                return rank(a.status)-rank(b.status) || a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'});
+              })
+              .map((registration)=><div key={registration.id} className={`rounded-[22px] border p-3.5 ${registration.status==='cancelled'?'border-slate-100 bg-slate-50 opacity-60':'border-slate-100 bg-white'}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2"><strong className="text-xs font-black text-slate-900">Familia {registration.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{registration.membershipNumber}</span></div>
+                    <div className="mt-1 text-[10px] text-slate-400">{registration.attendees.map((attendee)=>attendee.participantName).join(' · ') || 'Sin personas seleccionadas'}</div>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${registration.status==='confirmed'?'bg-emerald-50 text-emerald-700':registration.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500'}`}>
+                    {registration.status==='confirmed'?'Confirmada':registration.status==='waitlist'?'Espera':'Cancelada'}
+                  </span>
+                </div>
+              </div>)}
+            {!detail.registrations.length&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-7 text-center text-xs text-slate-400">Aún no se ha recibido ninguna inscripción.</div>}
+          </div>
+        </> : <div className="mt-5 rounded-[22px] border-2 border-dashed border-slate-200 p-6 text-center">
+          <div className="text-sm font-black text-slate-600">El formulario público está desactivado</div>
+          <div className="mt-1 text-xs text-slate-400">Edite el evento y active “Inscripciones públicas” para generar su enlace.</div>
+        </div>}
       </section>
 
       {!editingAttendance ? (
@@ -472,9 +612,10 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             <h2 className="truncate text-base font-black text-slate-900">{event.title}</h2>
             <p className="mt-1 line-clamp-2 min-h-9 text-[11px] leading-4 text-slate-500">{event.description||'Sin descripción.'}</p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Familias · {event.familyParticipationRate}%</div></div>
-              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Participantes · {event.censusParticipationRate}%</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · familias</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · personas</div></div>
             </div>
+            {event.registrationEnabled&&<div className="mt-2 rounded-2xl bg-indigo-50 px-3 py-2 text-[9px] font-bold text-indigo-700">Inscritos: {event.registeredFamilyCount} familias · {event.registeredParticipantCount} personas{event.waitlistFamilyCount?' · '+event.waitlistFamilyCount+' en espera':''}</div>}
           </div>
         </button>)}
       </div>
@@ -485,22 +626,22 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             <span className="text-[10px] font-black text-indigo-600">{dateLabel(event.eventDate)}</span>
             <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-900">{event.title}</span><span className="block truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</span></span>
             <span className="w-fit rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-black text-indigo-700">{event.academicYear}</span>
-            <span className="text-[10px] font-bold text-slate-500">{event.familyCount} fam. · {event.participantCount} pers.</span>
+            <span className="text-[10px] font-bold text-slate-500">{event.registrationEnabled ? event.registeredFamilyCount+' inscr. · '+event.registeredParticipantCount+' pers.' : event.familyCount+' fam. · '+event.participantCount+' pers.'}</span>
           </button>)}
         </div>
       </div>
     ) : (
       <div className="overflow-x-auto rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
         <table className="min-w-[760px] w-full border-collapse text-left">
-          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Familias</th><th className="px-4 py-3 text-right">Participantes</th><th className="px-4 py-3 text-right">% familias</th></tr></thead>
+          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Inscritos</th><th className="px-4 py-3 text-right">Asistentes</th><th className="px-4 py-3 text-right">Espera</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {visibleEvents.map((event)=><tr key={event.id} onClick={()=>void loadDetail(event.id)} className="cursor-pointer transition hover:bg-indigo-50/40">
               <td className="whitespace-nowrap px-4 py-3 text-[11px] font-bold text-indigo-600">{dateLabel(event.eventDate)}</td>
               <td className="max-w-[360px] px-4 py-3"><div className="truncate text-xs font-black text-slate-900">{event.title}</div><div className="truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</div></td>
               <td className="whitespace-nowrap px-4 py-3 text-[10px] font-black text-slate-600">{event.academicYear}</td>
-              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.familyCount}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.registrationEnabled?event.registeredParticipantCount:'—'}</td>
               <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.participantCount}</td>
-              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{event.familyParticipationRate}%</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{event.registrationEnabled?event.waitlistFamilyCount:'—'}</td>
             </tr>)}
           </tbody>
         </table>
@@ -534,6 +675,27 @@ function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
           <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso escolar</span><input value={draft.academicYear} onChange={e=>setDraft({...draft,academicYear:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm font-bold" placeholder="2026/2027" inputMode="numeric"/></label>
         </div>
         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Descripción breve</span><textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} rows={4} className="w-full rounded-2xl border border-slate-200 p-3 text-sm leading-6" placeholder="Objetivo, lugar o información útil de la actividad."/></label>
+
+        <section className={`rounded-[24px] border p-4 transition ${draft.registrationEnabled?'border-indigo-200 bg-indigo-50/45':'border-slate-200 bg-slate-50/70'}`}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" checked={draft.registrationEnabled} onChange={e=>setDraft({...draft,registrationEnabled:e.target.checked})} className="mt-1 h-4 w-4 rounded border-slate-300"/>
+            <div>
+              <div className="text-sm font-black text-slate-900">Inscripciones públicas</div>
+              <div className="mt-1 text-[11px] leading-5 text-slate-500">Genera un formulario público para que las familias socias se identifiquen, seleccionen asistentes y queden registradas automáticamente.</div>
+            </div>
+          </label>
+
+          {draft.registrationEnabled&&<div className="mt-4 space-y-4 border-t border-indigo-100 pt-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha límite</span><input type="datetime-local" value={draft.registrationDeadline||''} onChange={e=>setDraft({...draft,registrationDeadline:e.target.value||null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs"/></label>
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Aforo máximo</span><input type="number" min={1} value={draft.registrationCapacity??''} onChange={e=>setDraft({...draft,registrationCapacity:e.target.value?Number(e.target.value):null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold" placeholder="Sin límite"/></label>
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Máx. por familia</span><input type="number" min={1} max={20} value={draft.maxAttendeesPerFamily} onChange={e=>setDraft({...draft,maxAttendeesPerFamily:Math.max(1,Math.min(20,Number(e.target.value||1)))})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold"/></label>
+            </div>
+            <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Mensaje para las familias</span><textarea value={draft.registrationMessage||''} onChange={e=>setDraft({...draft,registrationMessage:e.target.value})} rows={3} className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm leading-6" placeholder="Indicaciones, punto de encuentro, requisitos, edades, material necesario…"/></label>
+            <div className="rounded-2xl bg-white/80 p-3 text-[10px] leading-5 text-slate-500">Si no fija fecha límite, el formulario permanecerá abierto hasta el final del día del evento. Si se completa el aforo, las nuevas familias pasarán automáticamente a lista de espera.</div>
+          </div>}
+        </section>
+
         <div>
           <div className="mb-1 text-[11px] font-bold text-slate-500">Imagen del evento</div>
           <label onDragEnter={e=>{e.preventDefault();setDragging(true)}} onDragOver={e=>e.preventDefault()} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);void onImage(e.dataTransfer.files?.[0])}} className={`relative flex min-h-48 cursor-pointer items-center justify-center overflow-hidden rounded-[24px] border-2 border-dashed transition ${dragging?'border-indigo-400 bg-indigo-50':'border-slate-200 bg-slate-50'}`}>

@@ -65,6 +65,15 @@ export interface EventSummary {
   participantCount: number;
   familyParticipationRate: number;
   censusParticipationRate: number;
+  registrationEnabled: boolean;
+  registrationToken: string;
+  registrationDeadline?: string | null;
+  registrationCapacity?: number | null;
+  maxAttendeesPerFamily: number;
+  registrationMessage?: string;
+  registeredFamilyCount: number;
+  registeredParticipantCount: number;
+  waitlistFamilyCount: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -77,6 +86,18 @@ export interface EventAttendee {
   participantName: string;
 }
 
+export interface EventRegistrationRecord {
+  id: string;
+  familyId: string;
+  familyName: string;
+  membershipNumber: string;
+  status: 'confirmed' | 'waitlist' | 'cancelled';
+  verifiedEmail: string;
+  createdAt: string;
+  updatedAt: string;
+  attendees: Array<Pick<EventAttendee, 'personType' | 'personId' | 'participantName'>>;
+}
+
 export interface EventDetail {
   id: string;
   title: string;
@@ -84,8 +105,15 @@ export interface EventDetail {
   academicYear: string;
   description: string;
   imageDataUrl?: string;
+  registrationEnabled: boolean;
+  registrationToken: string;
+  registrationDeadline?: string | null;
+  registrationCapacity?: number | null;
+  maxAttendeesPerFamily: number;
+  registrationMessage?: string;
   familyIds: string[];
   attendees: EventAttendee[];
+  registrations: EventRegistrationRecord[];
 }
 
 export interface EventAttendanceFamily {

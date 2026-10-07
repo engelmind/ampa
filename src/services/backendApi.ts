@@ -48,9 +48,9 @@ export const backendApi = {
 
   getEvents: () => request<{ events: EventSummary[]; totals: { activeFamilies: number; censusPeople: number } }>('/api/events'),
   getEvent: (id: string) => request<{ event: EventDetail }>(`/api/events/${id}`),
-  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl'>) =>
+  createEvent: (event: Pick<EventDetail, 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage'>) =>
     request<{ event: { id: string } }>('/api/events', { method:'POST', body:JSON.stringify(event) }),
-  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl'>) =>
+  updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage'>) =>
     request<{ ok:boolean }>(`/api/events/${event.id}`, { method:'PUT', body:JSON.stringify(event) }),
   deleteEvent: (id:string) =>
     request<{ ok:boolean }>(`/api/events/${id}`, { method:'DELETE' }),
@@ -59,6 +59,41 @@ export const backendApi = {
       method:'PUT',
       body:JSON.stringify({families}),
     }),
+
+  getPublicEvent: (token:string) => request<{ event: {
+    title:string; eventDate:string; academicYear:string; description:string; imageDataUrl?:string;
+    registrationEnabled:boolean; registrationDeadline?:string|null; registrationCapacity?:number|null;
+    maxAttendeesPerFamily:number; registrationMessage?:string; isOpen:boolean;
+    confirmedFamilies:number; confirmedParticipants:number; waitlistFamilies:number; remainingSeats:number|null;
+  } }>(`/api/public/events/${encodeURIComponent(token)}`),
+  requestPublicEventCode: (token:string,membershipNumber:string,email:string) =>
+    request<{ ok:boolean; mode:'otp'|'direct'; challengeId?:string; verificationToken?:string }>(
+      `/api/public/events/${encodeURIComponent(token)}/request-code`,
+      {method:'POST',body:JSON.stringify({membershipNumber,email})}
+    ),
+  verifyPublicEventCode: (token:string,challengeId:string,code:string) =>
+    request<{ ok:boolean; verificationToken:string }>(
+      `/api/public/events/${encodeURIComponent(token)}/verify-code`,
+      {method:'POST',body:JSON.stringify({challengeId,code})}
+    ),
+  getPublicEventSession: (token:string,verificationToken:string) =>
+    request<{ family:{
+      familyName:string; membershipNumber:string;
+      members:Array<{personType:'guardian'|'student';personId:string;name:string;detail:string}>
+    }; registration:null|{id:string;status:'confirmed'|'waitlist'|'cancelled';updatedAt:string;attendees:Array<{personType:'guardian'|'student';personId:string;participantName:string}>} }>(
+      `/api/public/events/${encodeURIComponent(token)}/session`,
+      {method:'POST',body:JSON.stringify({verificationToken})}
+    ),
+  savePublicEventRegistration: (token:string,verificationToken:string,attendees:Array<{personType:'guardian'|'student';personId:string}>) =>
+    request<{ok:boolean;status:'confirmed'|'waitlist';waitlistPosition:number|null}>(
+      `/api/public/events/${encodeURIComponent(token)}/register`,
+      {method:'POST',body:JSON.stringify({verificationToken,attendees})}
+    ),
+  cancelPublicEventRegistration: (token:string,verificationToken:string) =>
+    request<{ok:boolean}>(
+      `/api/public/events/${encodeURIComponent(token)}/cancel`,
+      {method:'POST',body:JSON.stringify({verificationToken})}
+    ),
 
   getSettings: () => request<{ settings: SystemSettings }>('/api/settings'),
   saveSettings: (settings: SystemSettings) =>

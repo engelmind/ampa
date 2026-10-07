@@ -247,6 +247,10 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
   if (!rows.length) throw Object.assign(new Error('BACKUP_NOT_FOUND'), {status:404});
   const payload = rows[0].payload || {};
   await sql.begin(async tx => {
+    await tx`delete from event_registration_sessions`;
+    await tx`delete from event_registration_challenges`;
+    await tx`delete from event_registration_attendees`;
+    await tx`delete from event_registrations`;
     await tx`delete from event_attendees`;
     await tx`delete from event_families`;
     await tx`delete from events`;
@@ -280,9 +284,17 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
         ${r.renewed_by||null}::uuid,${r.created_at||new Date().toISOString()}::timestamptz,${r.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const e of payload.events || []) {
-      await tx`insert into events(id,title,event_date,academic_year,description,image_data_url,created_by,created_at,updated_at)
-        values(${e.id}::uuid,${e.title},${e.event_date}::date,${e.academic_year||''},${e.description||''},${e.image_data_url||null},
-        ${e.created_by||null}::uuid,${e.created_at||new Date().toISOString()}::timestamptz,${e.updated_at||new Date().toISOString()}::timestamptz)`;
+      await tx`insert into events(
+          id,title,event_date,academic_year,description,image_data_url,created_by,
+          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_token,
+          created_at,updated_at
+        )
+        values(
+          ${e.id}::uuid,${e.title},${e.event_date}::date,${e.academic_year||''},${e.description||''},${e.image_data_url||null},${e.created_by||null}::uuid,
+          ${!!e.registration_enabled},${e.registration_deadline||null}::timestamptz,${e.registration_capacity||null},${e.max_attendees_per_family||8},${e.registration_message||''},
+          coalesce(${e.registration_token||null}::uuid,gen_random_uuid()),
+          ${e.created_at||new Date().toISOString()}::timestamptz,${e.updated_at||new Date().toISOString()}::timestamptz
+        )`;
     }
     for (const ef of payload.eventFamilies || []) {
       await tx`insert into event_families(event_id,family_id,created_at)
@@ -292,6 +304,16 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
       await tx`insert into event_attendees(id,event_id,family_id,person_type,person_id,participant_name,created_at)
         values(${ea.id}::uuid,${ea.event_id}::uuid,${ea.family_id}::uuid,${ea.person_type},${ea.person_id||null}::uuid,
         ${ea.participant_name},${ea.created_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const er of payload.eventRegistrations || []) {
+      await tx`insert into event_registrations(id,event_id,family_id,status,verified_email,created_at,updated_at)
+        values(${er.id}::uuid,${er.event_id}::uuid,${er.family_id}::uuid,${er.status||'confirmed'},${er.verified_email||''},
+        ${er.created_at||new Date().toISOString()}::timestamptz,${er.updated_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const era of payload.eventRegistrationAttendees || []) {
+      await tx`insert into event_registration_attendees(registration_id,person_type,person_id,participant_name,created_at)
+        values(${era.registration_id}::uuid,${era.person_type},${era.person_id}::uuid,${era.participant_name},
+        ${era.created_at||new Date().toISOString()}::timestamptz)`;
     }
     if (payload.settings) {
       const cleanSettings = normalizeGeneralSettings(payload.settings);
@@ -330,9 +352,421 @@ async function getEmailProviderConfig() {
   };
 }
 
+
+function numericMemberNumber(value:any){
+  const digits=String(value||'').replace(/\D/g,'').replace(/^0+/,'');
+  return digits || '0';
+}
+
+async function createRegistrationSession(eventId:string,familyId:string,email:string){
+  const token=randomToken(32);
+  const tokenHash=await sha256(token);
+  await sql`delete from event_registration_sessions where expires_at < now()`;
+  await sql`insert into event_registration_sessions(event_id,family_id,verified_email,token_hash,expires_at)
+    values(${eventId}::uuid,${familyId}::uuid,${email},${tokenHash},now()+interval '30 minutes')`;
+  return token;
+}
+
+async function registrationSession(token:string,eventId:string){
+  if(!token) return null;
+  const tokenHash=await sha256(token);
+  const rows=await sql`
+    select s.event_id,s.family_id,s.verified_email,f.family_name,f.membership_number,f.is_active_this_year
+    from event_registration_sessions s
+    join families f on f.id=s.family_id
+    where s.token_hash=${tokenHash} and s.event_id=${eventId}::uuid and s.expires_at>now()
+    limit 1`;
+  return rows[0] || null;
+}
+
+async function publicFamilyRegistrationState(eventId:string,familyId:string){
+  const [guardians,students,registrationRows]=await Promise.all([
+    sql`select id,first_name,last_name,relationship from guardians where family_id=${familyId}::uuid order by created_at`,
+    sql`select id,first_name,last_name,class_name from students where family_id=${familyId}::uuid order by created_at`,
+    sql`select r.id,r.status,r.updated_at,a.person_type,a.person_id,a.participant_name
+      from event_registrations r
+      left join event_registration_attendees a on a.registration_id=r.id
+      where r.event_id=${eventId}::uuid and r.family_id=${familyId}::uuid
+      order by a.created_at`
+  ]);
+  const registration=registrationRows.length ? {
+    id:registrationRows[0].id,
+    status:registrationRows[0].status,
+    updatedAt:registrationRows[0].updated_at,
+    attendees:registrationRows.filter((r:any)=>r.person_id).map((r:any)=>({
+      personType:r.person_type,personId:r.person_id,participantName:r.participant_name
+    }))
+  } : null;
+  return {
+    members:[
+      ...guardians.map((g:any)=>({
+        personType:'guardian',personId:g.id,
+        name:[g.first_name,g.last_name].filter(Boolean).join(' '),
+        detail:g.relationship==='tutor_legal'?'Tutor/a legal':g.relationship==='madre'?'Madre':g.relationship==='padre'?'Padre':'Adulto'
+      })),
+      ...students.map((s:any)=>({
+        personType:'student',personId:s.id,
+        name:[s.first_name,s.last_name].filter(Boolean).join(' '),
+        detail:s.class_name||'Alumno/a'
+      }))
+    ],
+    registration
+  };
+}
+
+async function eventRegistrationOpen(event:any){
+  if(!event?.registration_enabled) return false;
+  const deadline=event.registration_deadline
+    ? new Date(event.registration_deadline)
+    : new Date(String(event.event_date).slice(0,10)+'T23:59:59+02:00');
+  return Number.isFinite(deadline.getTime()) && Date.now()<=deadline.getTime();
+}
+
+function escapeHtmlValue(value:any){
+  return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+async function sendRegistrationMail(to:string,subject:string,html:string){
+  const config=await getEmailProviderConfig();
+  if(!config.configured) return {sent:false,configured:false};
+  const response=await fetch('https://api.resend.com/emails',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey}`},
+    body:JSON.stringify({
+      from:`${config.senderName} <${config.fromEmail}>`,
+      to:[to],
+      subject,
+      html
+    })
+  });
+  const result=await response.json().catch(()=>({}));
+  return {sent:response.ok,configured:true,result,status:response.status};
+}
+
+async function promoteEventWaitlist(eventId:string){
+  const promoted:Array<{email:string;familyName:string;eventTitle:string}>=[];
+
+  await sql.begin(async tx=>{
+    const eventRows=await tx`select id,title,registration_capacity from events where id=${eventId}::uuid for update`;
+    if(!eventRows.length) return;
+    const event=eventRows[0];
+
+    if(event.registration_capacity==null){
+      const rows=await tx`
+        update event_registrations r set status='confirmed',updated_at=now()
+        from families f
+        where r.event_id=${eventId}::uuid and r.status='waitlist' and f.id=r.family_id
+        returning r.verified_email,f.family_name`;
+      for(const row of rows) promoted.push({email:row.verified_email,familyName:row.family_name,eventTitle:event.title});
+      return;
+    }
+
+    const currentRows=await tx`
+      select count(*)::int as count
+      from event_registration_attendees a
+      join event_registrations r on r.id=a.registration_id
+      where r.event_id=${eventId}::uuid and r.status='confirmed'`;
+    let occupied=currentRows[0]?.count||0;
+    const waiting=await tx`
+      select r.id,r.verified_email,f.family_name,count(a.person_id)::int as attendee_count
+      from event_registrations r
+      join families f on f.id=r.family_id
+      left join event_registration_attendees a on a.registration_id=r.id
+      where r.event_id=${eventId}::uuid and r.status='waitlist'
+      group by r.id,r.verified_email,f.family_name,r.created_at
+      order by r.created_at asc`;
+
+    for(const row of waiting){
+      const count=row.attendee_count||0;
+      if(count<1 || occupied+count>event.registration_capacity) continue;
+      await tx`update event_registrations set status='confirmed',updated_at=now() where id=${row.id}::uuid`;
+      occupied+=count;
+      promoted.push({email:row.verified_email,familyName:row.family_name,eventTitle:event.title});
+    }
+  });
+
+  for(const item of promoted){
+    await sendRegistrationMail(
+      item.email,
+      `Plaza confirmada · ${item.eventTitle}`,
+      `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Plaza confirmada</h2><p>La inscripción de la familia <strong>${item.familyName}</strong> ha pasado de lista de espera a <strong>confirmada</strong> para <strong>${item.eventTitle}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+    ).catch(()=>null);
+  }
+  return promoted;
+}
+
 Deno.serve(async (req: Request) => {
   const path = pathOf(req);
   try {
+    const publicEventMatch=path.match(/^\/public\/events\/([0-9a-f-]+)$/i);
+    if(publicEventMatch && req.method==='GET'){
+      const token=publicEventMatch[1];
+      const rows=await sql`select * from events where registration_token=${token}::uuid limit 1`;
+      if(!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const e=rows[0];
+      const counts=await sql`
+        select
+          count(distinct r.family_id) filter (where r.status='confirmed')::int as confirmed_families,
+          count(a.person_id) filter (where r.status='confirmed')::int as confirmed_participants,
+          count(distinct r.family_id) filter (where r.status='waitlist')::int as waitlist_families
+        from event_registrations r
+        left join event_registration_attendees a on a.registration_id=r.id
+        where r.event_id=${e.id}::uuid`;
+      const confirmedParticipants=counts[0]?.confirmed_participants||0;
+      const capacity=e.registration_capacity==null?null:Number(e.registration_capacity);
+      return reply({event:{
+        title:e.title,
+        eventDate:isoDateFromDb(e.event_date),
+        academicYear:e.academic_year,
+        description:e.description||'',
+        imageDataUrl:e.image_data_url||'',
+        registrationEnabled:e.registration_enabled,
+        registrationDeadline:e.registration_deadline,
+        registrationCapacity:capacity,
+        maxAttendeesPerFamily:e.max_attendees_per_family,
+        registrationMessage:e.registration_message||'',
+        isOpen:await eventRegistrationOpen(e),
+        confirmedFamilies:counts[0]?.confirmed_families||0,
+        confirmedParticipants,
+        waitlistFamilies:counts[0]?.waitlist_families||0,
+        remainingSeats:capacity==null?null:Math.max(0,capacity-confirmedParticipants)
+      }});
+    }
+
+    const publicCodeMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/request-code$/i);
+    if(publicCodeMatch && req.method==='POST'){
+      const token=publicCodeMatch[1];
+      const body=await readBody(req);
+      const memberInput=String(body.membershipNumber||'').trim();
+      const email=String(body.email||'').trim().toLowerCase();
+      if(!memberInput || !email || email.length>254) return reply({error:'INVALID_IDENTIFICATION'},400);
+
+      const events=await sql`select * from events where registration_token=${token}::uuid limit 1`;
+      if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const event=events[0];
+      const eventOpen=await eventRegistrationOpen(event);
+
+      const memberNormalized=numericMemberNumber(memberInput);
+      const matches=await sql`
+        select f.id as family_id,f.family_name,f.membership_number,f.is_active_this_year,
+               g.id as guardian_id,g.email
+        from families f
+        join guardians g on g.family_id=f.id
+        where lower(trim(coalesce(g.email,'')))=${email}
+          and (
+            lower(trim(f.membership_number))=lower(trim(${memberInput}))
+            or ltrim(regexp_replace(f.membership_number,'\\D','','g'),'0')=${memberNormalized}
+          )
+        order by g.is_main_contact desc,g.created_at
+        limit 1`;
+      const match=matches[0];
+      if(!match) return reply({error:'MEMBERSHIP_NOT_VERIFIED'},422);
+      if(!match.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
+
+      const existingRegistration=await sql`
+        select id,status from event_registrations
+        where event_id=${event.id}::uuid and family_id=${match.family_id}::uuid
+          and status<>'cancelled'
+        limit 1`;
+      if(!event.registration_enabled && !existingRegistration.length) return reply({error:'REGISTRATION_DISABLED'},409);
+      if(!eventOpen && !existingRegistration.length) return reply({error:'REGISTRATION_CLOSED'},409);
+
+      const recent=await sql`
+        select count(*)::int as count from event_registration_challenges
+        where event_id=${event.id}::uuid and family_id=${match.family_id}::uuid
+          and created_at>now()-interval '15 minutes'`;
+      if((recent[0]?.count||0)>=4) return reply({error:'TOO_MANY_CODES'},429);
+
+      const mailConfig=await getEmailProviderConfig();
+      const challengeId=crypto.randomUUID();
+
+      if(!mailConfig.configured){
+        await sql`insert into event_registration_challenges(id,event_id,family_id,guardian_id,email,code_hash,verified_at)
+          values(${challengeId}::uuid,${event.id}::uuid,${match.family_id}::uuid,${match.guardian_id}::uuid,${email},null,now())`;
+        const verificationToken=await createRegistrationSession(event.id,match.family_id,email);
+        return reply({ok:true,mode:'direct',verificationToken});
+      }
+
+      const random=crypto.getRandomValues(new Uint32Array(1))[0];
+      const code=String(100000+(random%900000));
+      const codeHash=await sha256(`${challengeId}:${code}`);
+      await sql`insert into event_registration_challenges(id,event_id,family_id,guardian_id,email,code_hash)
+        values(${challengeId}::uuid,${event.id}::uuid,${match.family_id}::uuid,${match.guardian_id}::uuid,${email},${codeHash})`;
+
+      const sent=await sendRegistrationMail(
+        email,
+        `Código de inscripción · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Hola,</p><p>Tu código para gestionar la inscripción de la familia <strong>${escapeHtmlValue(match.family_name)}</strong> en <strong>${escapeHtmlValue(event.title)}</strong> es:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;margin:22px 0">${code}</div><p>Caduca en 10 minutos. Si no has solicitado este código, ignora este mensaje.</p><p>AMPA Agustinos Granada</p></div>`
+      );
+      if(!sent.sent){
+        await sql`delete from event_registration_challenges where id=${challengeId}::uuid`;
+        return reply({error:'EMAIL_PROVIDER_FAILED'},502);
+      }
+      return reply({ok:true,mode:'otp',challengeId});
+    }
+
+    const publicVerifyMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/verify-code$/i);
+    if(publicVerifyMatch && req.method==='POST'){
+      const token=publicVerifyMatch[1];
+      const body=await readBody(req);
+      const challengeId=String(body.challengeId||'');
+      const code=String(body.code||'').replace(/\D/g,'').slice(0,6);
+      if(!challengeId || code.length!==6) return reply({error:'INVALID_CODE'},400);
+      const rows=await sql`
+        select c.*,f.is_active_this_year,e.registration_token
+        from event_registration_challenges c
+        join families f on f.id=c.family_id
+        join events e on e.id=c.event_id
+        where c.id=${challengeId}::uuid and e.registration_token=${token}::uuid
+        limit 1`;
+      const challenge=rows[0];
+      if(!challenge || challenge.verified_at || new Date(challenge.expires_at).getTime()<Date.now() || challenge.attempts>=5) {
+        return reply({error:'CODE_EXPIRED'},410);
+      }
+      await sql`update event_registration_challenges set attempts=attempts+1 where id=${challengeId}::uuid`;
+      const expected=await sha256(`${challengeId}:${code}`);
+      if(expected!==challenge.code_hash) return reply({error:'INVALID_CODE'},400);
+      if(!challenge.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
+      await sql`update event_registration_challenges set verified_at=now() where id=${challengeId}::uuid`;
+      const verificationToken=await createRegistrationSession(challenge.event_id,challenge.family_id,challenge.email);
+      return reply({ok:true,verificationToken});
+    }
+
+    const publicSessionMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/session$/i);
+    if(publicSessionMatch && req.method==='POST'){
+      const token=publicSessionMatch[1];
+      const body=await readBody(req);
+      const events=await sql`select id from events where registration_token=${token}::uuid limit 1`;
+      if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const session=await registrationSession(String(body.verificationToken||''),events[0].id);
+      if(!session) return reply({error:'VERIFICATION_EXPIRED'},401);
+      if(!session.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
+      const state=await publicFamilyRegistrationState(events[0].id,session.family_id);
+      return reply({
+        family:{
+          familyName:session.family_name,
+          membershipNumber:numericMemberNumber(session.membership_number),
+          members:state.members
+        },
+        registration:state.registration
+      });
+    }
+
+    const publicRegisterMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/register$/i);
+    if(publicRegisterMatch && req.method==='POST'){
+      const token=publicRegisterMatch[1];
+      const body=await readBody(req);
+      const eventRows=await sql`select * from events where registration_token=${token}::uuid limit 1`;
+      if(!eventRows.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const event=eventRows[0];
+      if(!event.registration_enabled || !await eventRegistrationOpen(event)) return reply({error:'REGISTRATION_CLOSED'},409);
+      const session=await registrationSession(String(body.verificationToken||''),event.id);
+      if(!session) return reply({error:'VERIFICATION_EXPIRED'},401);
+      if(!session.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
+
+      const requested=Array.isArray(body.attendees)?body.attendees:[];
+      const uniqueKeys=new Set<string>();
+      const normalized:any[]=[];
+      for(const item of requested){
+        const personType=item?.personType;
+        const personId=String(item?.personId||'');
+        if(!['guardian','student'].includes(personType) || !/^[0-9a-f-]{36}$/i.test(personId)) continue;
+        const key=`${personType}:${personId}`;
+        if(uniqueKeys.has(key)) continue;
+        uniqueKeys.add(key);
+        normalized.push({personType,personId});
+      }
+      if(!normalized.length) return reply({error:'NO_ATTENDEES'},400);
+      if(normalized.length>Number(event.max_attendees_per_family||8)) return reply({error:'FAMILY_LIMIT_EXCEEDED'},400);
+
+      let finalStatus='confirmed';
+      let registrationId='';
+      await sql.begin(async tx=>{
+        const locked=await tx`select * from events where id=${event.id}::uuid for update`;
+        const current=locked[0];
+        if(!current || !current.registration_enabled) throw Object.assign(new Error('REGISTRATION_CLOSED'),{status:409});
+
+        const [guardians,students]=await Promise.all([
+          tx`select id,first_name,last_name from guardians where family_id=${session.family_id}::uuid`,
+          tx`select id,first_name,last_name from students where family_id=${session.family_id}::uuid`
+        ]);
+        const valid=new Map<string,string>();
+        for(const g of guardians) valid.set(`guardian:${g.id}`,[g.first_name,g.last_name].filter(Boolean).join(' '));
+        for(const s of students) valid.set(`student:${s.id}`,[s.first_name,s.last_name].filter(Boolean).join(' '));
+        for(const item of normalized){
+          if(!valid.has(`${item.personType}:${item.personId}`)) throw Object.assign(new Error('INVALID_ATTENDEE'),{status:400});
+        }
+
+        const occupiedRows=await tx`
+          select count(*)::int as count
+          from event_registration_attendees a
+          join event_registrations r on r.id=a.registration_id
+          where r.event_id=${event.id}::uuid and r.status='confirmed' and r.family_id<>${session.family_id}::uuid`;
+        const occupied=occupiedRows[0]?.count||0;
+        const capacity=current.registration_capacity==null?null:Number(current.registration_capacity);
+        finalStatus=capacity!=null && occupied+normalized.length>capacity ? 'waitlist' : 'confirmed';
+
+        const rows=await tx`
+          insert into event_registrations(event_id,family_id,status,verified_email,updated_at)
+          values(${event.id}::uuid,${session.family_id}::uuid,${finalStatus},${session.verified_email},now())
+          on conflict(event_id,family_id) do update set
+            status=excluded.status,verified_email=excluded.verified_email,updated_at=now()
+          returning id`;
+        registrationId=rows[0].id;
+        await tx`delete from event_registration_attendees where registration_id=${registrationId}::uuid`;
+        for(const item of normalized){
+          const name=valid.get(`${item.personType}:${item.personId}`)||'';
+          await tx`insert into event_registration_attendees(registration_id,person_type,person_id,participant_name)
+            values(${registrationId}::uuid,${item.personType},${item.personId}::uuid,${name})`;
+        }
+      });
+
+      await promoteEventWaitlist(event.id);
+      const fresh=await sql`select status from event_registrations where id=${registrationId}::uuid limit 1`;
+      finalStatus=fresh[0]?.status||finalStatus;
+      let waitlistPosition:null|number=null;
+      if(finalStatus==='waitlist'){
+        const pos=await sql`
+          select count(*)::int as position
+          from event_registrations r
+          where r.event_id=${event.id}::uuid and r.status='waitlist'
+            and r.created_at <= (select created_at from event_registrations where id=${registrationId}::uuid)`;
+        waitlistPosition=pos[0]?.position||1;
+      }
+
+      const statusText=finalStatus==='confirmed'?'confirmada':'en lista de espera';
+      await sendRegistrationMail(
+        session.verified_email,
+        `Inscripción ${statusText} · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Inscripción ${statusText}</h2><p>La inscripción de la familia <strong>${escapeHtmlValue(session.family_name)}</strong> para <strong>${escapeHtmlValue(event.title)}</strong> ha quedado <strong>${statusText}</strong>.</p><p>Personas incluidas: <strong>${normalized.length}</strong>.</p><p>Puedes volver al mismo enlace para modificar o cancelar la inscripción.</p><p>AMPA Agustinos Granada</p></div>`
+      ).catch(()=>null);
+
+      return reply({ok:true,status:finalStatus,waitlistPosition});
+    }
+
+    const publicCancelMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/cancel$/i);
+    if(publicCancelMatch && req.method==='POST'){
+      const token=publicCancelMatch[1];
+      const body=await readBody(req);
+      const events=await sql`select id,title from events where registration_token=${token}::uuid limit 1`;
+      if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const event=events[0];
+      const session=await registrationSession(String(body.verificationToken||''),event.id);
+      if(!session) return reply({error:'VERIFICATION_EXPIRED'},401);
+      const rows=await sql`
+        update event_registrations set status='cancelled',updated_at=now()
+        where event_id=${event.id}::uuid and family_id=${session.family_id}::uuid
+        returning id`;
+      if(!rows.length) return reply({error:'REGISTRATION_NOT_FOUND'},404);
+      await promoteEventWaitlist(event.id);
+      await sendRegistrationMail(
+        session.verified_email,
+        `Inscripción cancelada · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Se ha cancelado la inscripción de la familia <strong>${escapeHtmlValue(session.family_name)}</strong> en <strong>${escapeHtmlValue(event.title)}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+      ).catch(()=>null);
+      return reply({ok:true});
+    }
+
     if (req.method === 'GET' && path === '/health') {
       const rows = await sql`select count(*)::int as users from app_users`;
       return reply({ ok:true, database:'connected', users:rows[0]?.users || 0, mode:'supabase-edge' });
@@ -464,10 +898,18 @@ Deno.serve(async (req: Request) => {
 
     if (path === '/events' && req.method === 'GET') {
       await requireUser(req);
-      const [events, familyCounts, attendeeCounts, totals] = await Promise.all([
+      const [events, familyCounts, attendeeCounts, registrationCounts, totals] = await Promise.all([
         sql`select * from events order by event_date desc, created_at desc`,
         sql`select event_id,count(*)::int as count from event_families group by event_id`,
         sql`select event_id,count(*)::int as count from event_attendees group by event_id`,
+        sql`
+          select r.event_id,
+            count(distinct r.family_id) filter (where r.status='confirmed')::int as registered_family_count,
+            count(a.person_id) filter (where r.status='confirmed')::int as registered_participant_count,
+            count(distinct r.family_id) filter (where r.status='waitlist')::int as waitlist_family_count
+          from event_registrations r
+          left join event_registration_attendees a on a.registration_id=r.id
+          group by r.event_id`,
         sql`select
           (select count(*)::int from families where is_active_this_year=true) as active_families,
           (
@@ -481,11 +923,21 @@ Deno.serve(async (req: Request) => {
       return reply({events:events.map((e:any)=>{
         const familyCount=familyCounts.find((x:any)=>x.event_id===e.id)?.count || 0;
         const participantCount=attendeeCounts.find((x:any)=>x.event_id===e.id)?.count || 0;
+        const reg=registrationCounts.find((x:any)=>x.event_id===e.id) || {};
         return {
           id:e.id,title:e.title,eventDate:isoDateFromDb(e.event_date),academicYear:e.academic_year,description:e.description||'',imageDataUrl:e.image_data_url||'',
           familyCount,participantCount,
           familyParticipationRate:activeFamilies ? Math.round((familyCount/activeFamilies)*1000)/10 : 0,
           censusParticipationRate:censusPeople ? Math.round((participantCount/censusPeople)*1000)/10 : 0,
+          registrationEnabled:!!e.registration_enabled,
+          registrationToken:e.registration_token,
+          registrationDeadline:e.registration_deadline,
+          registrationCapacity:e.registration_capacity==null?null:Number(e.registration_capacity),
+          maxAttendeesPerFamily:e.max_attendees_per_family||8,
+          registrationMessage:e.registration_message||'',
+          registeredFamilyCount:reg.registered_family_count||0,
+          registeredParticipantCount:reg.registered_participant_count||0,
+          waitlistFamilyCount:reg.waitlist_family_count||0,
           createdAt:e.created_at,updatedAt:e.updated_at
         };
       }),totals:{activeFamilies,censusPeople}});
@@ -495,10 +947,19 @@ Deno.serve(async (req: Request) => {
       const u=await requireRole(req,['superadmin','admin']);
       const body=await readBody(req);
       const academicYear=String(body.academicYear||'').trim();
+      const capacity=body.registrationCapacity==null || body.registrationCapacity==='' ? null : Number(body.registrationCapacity);
+      const maxPerFamily=Math.max(1,Math.min(20,Number(body.maxAttendeesPerFamily||8)));
       if (!String(body.title||'').trim() || !body.eventDate || !/^[0-9]{4}\/[0-9]{4}$/.test(academicYear)) return reply({error:'INVALID_EVENT'},400);
+      if (capacity!=null && (!Number.isInteger(capacity) || capacity<1)) return reply({error:'INVALID_CAPACITY'},400);
       if (String(body.imageDataUrl||'').length > 1500000) return reply({error:'EVENT_IMAGE_TOO_LARGE'},413);
-      const rows=await sql`insert into events(title,event_date,academic_year,description,image_data_url,created_by)
-        values(${String(body.title).trim()},${body.eventDate}::date,${academicYear},${String(body.description||'').trim()},${body.imageDataUrl||null},${u.id}::uuid)
+      const rows=await sql`insert into events(
+          title,event_date,academic_year,description,image_data_url,created_by,
+          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message
+        )
+        values(
+          ${String(body.title).trim()},${body.eventDate}::date,${academicYear},${String(body.description||'').trim()},${body.imageDataUrl||null},${u.id}::uuid,
+          ${!!body.registrationEnabled},${body.registrationDeadline||null}::timestamptz,${capacity},${maxPerFamily},${String(body.registrationMessage||'').trim().slice(0,2000)}
+        )
         returning *`;
       await log(u.id,'event','create',`Evento creado: ${rows[0].title}`,rows[0].id,rows[0].title);
       return reply({event:{id:rows[0].id}},201);
@@ -510,15 +971,43 @@ Deno.serve(async (req: Request) => {
       const id=eventMatch[1];
       const rows=await sql`select * from events where id=${id}::uuid limit 1`;
       if (!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);
-      const [families,attendees]=await Promise.all([
+      const [families,attendees,registrationRows]=await Promise.all([
         sql`select family_id from event_families where event_id=${id}::uuid order by created_at`,
-        sql`select id,family_id,person_type,person_id,participant_name from event_attendees where event_id=${id}::uuid order by created_at`
+        sql`select id,family_id,person_type,person_id,participant_name from event_attendees where event_id=${id}::uuid order by created_at`,
+        sql`
+          select r.id,r.family_id,r.status,r.verified_email,r.created_at,r.updated_at,
+                 f.family_name,f.membership_number,
+                 a.person_type,a.person_id,a.participant_name
+          from event_registrations r
+          join families f on f.id=r.family_id
+          left join event_registration_attendees a on a.registration_id=r.id
+          where r.event_id=${id}::uuid
+          order by r.created_at,a.created_at`
       ]);
+      const registrationsMap=new Map<string,any>();
+      for(const row of registrationRows){
+        if(!registrationsMap.has(row.id)){
+          registrationsMap.set(row.id,{
+            id:row.id,familyId:row.family_id,familyName:row.family_name,membershipNumber:row.membership_number,
+            status:row.status,verifiedEmail:row.verified_email,createdAt:row.created_at,updatedAt:row.updated_at,attendees:[]
+          });
+        }
+        if(row.person_id) registrationsMap.get(row.id).attendees.push({
+          personType:row.person_type,personId:row.person_id,participantName:row.participant_name
+        });
+      }
       const e=rows[0];
       return reply({event:{
         id:e.id,title:e.title,eventDate:isoDateFromDb(e.event_date),academicYear:e.academic_year,description:e.description||'',imageDataUrl:e.image_data_url||'',
+        registrationEnabled:!!e.registration_enabled,
+        registrationToken:e.registration_token,
+        registrationDeadline:e.registration_deadline,
+        registrationCapacity:e.registration_capacity==null?null:Number(e.registration_capacity),
+        maxAttendeesPerFamily:e.max_attendees_per_family||8,
+        registrationMessage:e.registration_message||'',
         familyIds:families.map((x:any)=>x.family_id),
-        attendees:attendees.map((a:any)=>({id:a.id,familyId:a.family_id,personType:a.person_type,personId:a.person_id,participantName:a.participant_name}))
+        attendees:attendees.map((a:any)=>({id:a.id,familyId:a.family_id,personType:a.person_type,personId:a.person_id,participantName:a.participant_name})),
+        registrations:Array.from(registrationsMap.values())
       }});
     }
 
@@ -527,12 +1016,23 @@ Deno.serve(async (req: Request) => {
       const id=eventMatch[1];
       const body=await readBody(req);
       const academicYear=String(body.academicYear||'').trim();
+      const capacity=body.registrationCapacity==null || body.registrationCapacity==='' ? null : Number(body.registrationCapacity);
+      const maxPerFamily=Math.max(1,Math.min(20,Number(body.maxAttendeesPerFamily||8)));
       if (!String(body.title||'').trim() || !body.eventDate || !/^[0-9]{4}\/[0-9]{4}$/.test(academicYear)) return reply({error:'INVALID_EVENT'},400);
+      if (capacity!=null && (!Number.isInteger(capacity) || capacity<1)) return reply({error:'INVALID_CAPACITY'},400);
       if (String(body.imageDataUrl||'').length > 1500000) return reply({error:'EVENT_IMAGE_TOO_LARGE'},413);
-      const rows=await sql`update events set title=${String(body.title).trim()},event_date=${body.eventDate}::date,academic_year=${academicYear},
-        description=${String(body.description||'').trim()},image_data_url=${body.imageDataUrl||null},updated_at=now()
+      const rows=await sql`update events set
+        title=${String(body.title).trim()},event_date=${body.eventDate}::date,academic_year=${academicYear},
+        description=${String(body.description||'').trim()},image_data_url=${body.imageDataUrl||null},
+        registration_enabled=${!!body.registrationEnabled},
+        registration_deadline=${body.registrationDeadline||null}::timestamptz,
+        registration_capacity=${capacity},
+        max_attendees_per_family=${maxPerFamily},
+        registration_message=${String(body.registrationMessage||'').trim().slice(0,2000)},
+        updated_at=now()
         where id=${id}::uuid returning title`;
       if (!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      await promoteEventWaitlist(id);
       await log(u.id,'event','update',`Evento actualizado: ${rows[0].title}`,id,rows[0].title);
       return reply({ok:true});
     }

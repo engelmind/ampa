@@ -22,6 +22,7 @@ import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { CompactFamilyGrid } from './components/CompactFamilyGrid';
 import { CompactFamilyList } from './components/CompactFamilyList';
 import { EventsModule } from './components/EventsModule';
+import { PublicEventRegistration } from './components/PublicEventRegistration';
 
 const defaultSettings: SystemSettings = {
   activeAcademicYear: '2026/2027',
@@ -168,6 +169,8 @@ const newStudent = (): Student => ({
 });
 
 export default function App() {
+  const publicRegistrationMatch = window.location.pathname.match(/^\/inscripcion\/([0-9a-f-]+)\/?$/i);
+  const publicRegistrationToken = publicRegistrationMatch?.[1] || '';
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -230,6 +233,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (publicRegistrationToken) return;
     let cancelled = false;
     (async () => {
       try {
@@ -253,7 +257,7 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [publicRegistrationToken]);
 
   const academicYears = useMemo(() => getAvailableAcademicYears(families,settings),[families,settings]);
 
@@ -368,6 +372,10 @@ export default function App() {
 
   const maxCourseCount = Math.max(1,...courseBreakdown.map((item)=>item.count));
   const recentActivity = activity.slice(0,7);
+
+  if (publicRegistrationToken) {
+    return <PublicEventRegistration token={publicRegistrationToken}/>;
+  }
 
   if (bootState === 'loading') {
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-center text-white"><AmpaLogo inverted className="mx-auto h-16 w-auto"/><p className="mt-5 text-sm text-slate-300">Conectando con la base de datos…</p></div></div>;
