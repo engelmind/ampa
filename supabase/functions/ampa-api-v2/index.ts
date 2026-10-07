@@ -330,6 +330,145 @@ async function getEmailProviderConfig() {
   };
 }
 
+
+function numericMemberNumber(value:any){
+  const digits=String(value||'').replace(/\D/g,'').replace(/^0+/,'');
+  return digits || '0';
+}
+
+async function createRegistrationSession(eventId:string,familyId:string,email:string){
+  const token=randomToken(32);
+  const tokenHash=await sha256(token);
+  await sql\`delete from event_registration_sessions where expires_at < now()\`;
+  await sql\`insert into event_registration_sessions(event_id,family_id,verified_email,token_hash,expires_at)
+    values(\${eventId}::uuid,\${familyId}::uuid,\${email},\${tokenHash},now()+interval '30 minutes')\`;
+  return token;
+}
+
+async function registrationSession(token:string,eventId:string){
+  if(!token) return null;
+  const tokenHash=await sha256(token);
+  const rows=await sql\`
+    select s.event_id,s.family_id,s.verified_email,f.family_name,f.membership_number,f.is_active_this_year
+    from event_registration_sessions s
+    join families f on f.id=s.family_id
+    where s.token_hash=\${tokenHash} and s.event_id=\${eventId}::uuid and s.expires_at>now()
+    limit 1\`;
+  return rows[0] || null;
+}
+
+async function publicFamilyRegistrationState(eventId:string,familyId:string){
+  const [guardians,students,registrationRows]=await Promise.all([
+    sql\`select id,first_name,last_name,relationship from guardians where family_id=\${familyId}::uuid order by created_at\`,
+    sql\`select id,first_name,last_name,class_name from students where family_id=\${familyId}::uuid order by created_at\`,
+    sql\`select r.id,r.status,r.updated_at,a.person_type,a.person_id,a.participant_name
+      from event_registrations r
+      left join event_registration_attendees a on a.registration_id=r.id
+      where r.event_id=\${eventId}::uuid and r.family_id=\${familyId}::uuid
+      order by a.created_at\`
+  ]);
+  const registration=registrationRows.length ? {
+    id:registrationRows[0].id,
+    status:registrationRows[0].status,
+    updatedAt:registrationRows[0].updated_at,
+    attendees:registrationRows.filter((r:any)=>r.person_id).map((r:any)=>({
+      personType:r.person_type,personId:r.person_id,participantName:r.participant_name
+    }))
+  } : null;
+  return {
+    members:[
+      ...guardians.map((g:any)=>({
+        personType:'guardian',personId:g.id,
+        name:[g.first_name,g.last_name].filter(Boolean).join(' '),
+        detail:g.relationship==='tutor_legal'?'Tutor/a legal':g.relationship==='madre'?'Madre':g.relationship==='padre'?'Padre':'Adulto'
+      })),
+      ...students.map((s:any)=>({
+        personType:'student',personId:s.id,
+        name:[s.first_name,s.last_name].filter(Boolean).join(' '),
+        detail:s.class_name||'Alumno/a'
+      }))
+    ],
+    registration
+  };
+}
+
+async function eventRegistrationOpen(event:any){
+  if(!event?.registration_enabled) return false;
+  const deadline=event.registration_deadline
+    ? new Date(event.registration_deadline)
+    : new Date(String(event.event_date).slice(0,10)+'T23:59:59+02:00');
+  return Number.isFinite(deadline.getTime()) && Date.now()<=deadline.getTime();
+}
+
+async function sendRegistrationMail(to:string,subject:string,html:string){
+  const config=await getEmailProviderConfig();
+  if(!config.configured) return {sent:false,configured:false};
+  const response=await fetch('https://api.resend.com/emails',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':\`Bearer \${config.apiKey}\`},
+    body:JSON.stringify({
+      from:\`\${config.senderName} <\${config.fromEmail}>\`,
+      to:[to],
+      subject,
+      html
+    })
+  });
+  const result=await response.json().catch(()=>({}));
+  return {sent:response.ok,configured:true,result,status:response.status};
+}
+
+async function promoteEventWaitlist(eventId:string){
+  const promoted:Array<{email:string;familyName:string;eventTitle:string}>=[];
+
+  await sql.begin(async tx=>{
+    const eventRows=await tx\`select id,title,registration_capacity from events where id=\${eventId}::uuid for update\`;
+    if(!eventRows.length) return;
+    const event=eventRows[0];
+
+    if(event.registration_capacity==null){
+      const rows=await tx\`
+        update event_registrations r set status='confirmed',updated_at=now()
+        from families f
+        where r.event_id=\${eventId}::uuid and r.status='waitlist' and f.id=r.family_id
+        returning r.verified_email,f.family_name\`;
+      for(const row of rows) promoted.push({email:row.verified_email,familyName:row.family_name,eventTitle:event.title});
+      return;
+    }
+
+    const currentRows=await tx\`
+      select count(*)::int as count
+      from event_registration_attendees a
+      join event_registrations r on r.id=a.registration_id
+      where r.event_id=\${eventId}::uuid and r.status='confirmed'\`;
+    let occupied=currentRows[0]?.count||0;
+    const waiting=await tx\`
+      select r.id,r.verified_email,f.family_name,count(a.person_id)::int as attendee_count
+      from event_registrations r
+      join families f on f.id=r.family_id
+      left join event_registration_attendees a on a.registration_id=r.id
+      where r.event_id=\${eventId}::uuid and r.status='waitlist'
+      group by r.id,r.verified_email,f.family_name,r.created_at
+      order by r.created_at asc\`;
+
+    for(const row of waiting){
+      const count=row.attendee_count||0;
+      if(count<1 || occupied+count>event.registration_capacity) continue;
+      await tx\`update event_registrations set status='confirmed',updated_at=now() where id=\${row.id}::uuid\`;
+      occupied+=count;
+      promoted.push({email:row.verified_email,familyName:row.family_name,eventTitle:event.title});
+    }
+  });
+
+  for(const item of promoted){
+    await sendRegistrationMail(
+      item.email,
+      \`Plaza confirmada · \${item.eventTitle}\`,
+      \`<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Plaza confirmada</h2><p>La inscripción de la familia <strong>\${item.familyName}</strong> ha pasado de lista de espera a <strong>confirmada</strong> para <strong>\${item.eventTitle}</strong>.</p><p>AMPA Agustinos Granada</p></div>\`
+    ).catch(()=>null);
+  }
+  return promoted;
+}
+
 Deno.serve(async (req: Request) => {
   const path = pathOf(req);
   try {
