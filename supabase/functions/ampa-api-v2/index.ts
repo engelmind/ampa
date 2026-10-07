@@ -544,8 +544,7 @@ Deno.serve(async (req: Request) => {
       const events=await sql\`select * from events where registration_token=\${token}::uuid limit 1\`;
       if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const event=events[0];
-      if(!event.registration_enabled) return reply({error:'REGISTRATION_DISABLED'},409);
-      if(!await eventRegistrationOpen(event)) return reply({error:'REGISTRATION_CLOSED'},409);
+      const eventOpen=await eventRegistrationOpen(event);
 
       const memberNormalized=numericMemberNumber(memberInput);
       const matches=await sql\`
@@ -563,6 +562,14 @@ Deno.serve(async (req: Request) => {
       const match=matches[0];
       if(!match) return reply({error:'MEMBERSHIP_NOT_VERIFIED'},422);
       if(!match.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
+
+      const existingRegistration=await sql`
+        select id,status from event_registrations
+        where event_id=${event.id}::uuid and family_id=${match.family_id}::uuid
+          and status<>'cancelled'
+        limit 1`;
+      if(!event.registration_enabled && !existingRegistration.length) return reply({error:'REGISTRATION_DISABLED'},409);
+      if(!eventOpen && !existingRegistration.length) return reply({error:'REGISTRATION_CLOSED'},409);
 
       const recent=await sql\`
         select count(*)::int as count from event_registration_challenges
