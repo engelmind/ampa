@@ -424,6 +424,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${!detail.registrationEnabled?'bg-slate-100 text-slate-500':registrationOpen?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
                 {!detail.registrationEnabled?'Desactivadas':registrationOpen?'Abiertas':'Cerradas'}
               </span>
+              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-black uppercase text-violet-700">{detail.registrationAudience==='public'?'Socios y no socios':'Solo socios'}</span>
             </div>
             <h2 className="mt-1 text-xl font-black text-slate-950">Formulario público para familias</h2>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">{registrationOpen
