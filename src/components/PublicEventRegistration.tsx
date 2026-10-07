@@ -85,6 +85,7 @@ export function PublicEventRegistration({token}:{token:string}){
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [result,setResult]=useState<{status:'confirmed'|'waitlist';waitlistPosition:number|null}|null>(null);
+  const [showExistingAccess,setShowExistingAccess]=useState(false);
 
   const storageKey=`ampa-event-registration-${token}`;
   const keyOf=(m:{personType:string;personId:string})=>`${m.personType}:${m.personId}`;
@@ -261,12 +262,14 @@ export function PublicEventRegistration({token}:{token:string}){
             <div className="rounded-2xl bg-slate-50 p-3"><Clock3 size={15} className="text-indigo-500"/><div className="mt-2 text-lg font-black">{event.remainingSeats==null?'—':event.remainingSeats}</div><div className="text-[10px] font-bold text-slate-400">Plazas libres</div></div>
           </div>
 
-          <div className={`mt-4 flex items-start gap-3 rounded-2xl p-4 ${event.isOpen?'bg-emerald-50 text-emerald-800':'bg-amber-50 text-amber-900'}`}>
+          <div className={`mt-4 flex items-start gap-3 rounded-2xl p-4 ${event.isOpen?'bg-emerald-50 text-emerald-800':event.registrationEnabled?'bg-amber-50 text-amber-900':'bg-slate-100 text-slate-700'}`}>
             {event.isOpen?<CheckCircle2 size={18} className="mt-0.5 shrink-0"/>:<Clock3 size={18} className="mt-0.5 shrink-0"/>}
             <div className="text-xs leading-5">
-              <strong>{event.isOpen?'Inscripciones abiertas':'Inscripciones cerradas'}</strong>
-              {deadline&&<span className="block opacity-75">Plazo: {deadline}</span>}
-              {!event.isOpen&&<span className="block opacity-75">Si ya se inscribió, puede identificarse para consultar o cancelar su inscripción.</span>}
+              <strong>{event.isOpen?'Inscripciones abiertas':event.registrationEnabled?'Plazo de inscripción cerrado':'Inscripciones cerradas por el AMPA'}</strong>
+              {deadline&&<span className="block opacity-75">Fecha límite: {deadline}</span>}
+              {event.isOpen
+                ? <span className="block opacity-75">Puede verificar su familia y realizar una nueva inscripción.</span>
+                : <span className="block opacity-75">No se admiten nuevas inscripciones. Las ya existentes pueden consultarse o cancelarse.</span>}
             </div>
           </div>
         </div>
@@ -285,11 +288,19 @@ export function PublicEventRegistration({token}:{token:string}){
       </section>}
 
       {!family ? (
+        !event.isOpen && !showExistingAccess ? (
+          <section className="rounded-[30px] border border-white bg-white p-6 text-center shadow-[0_16px_45px_rgba(71,85,105,.09)] sm:p-8">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500"><Clock3 size={22}/></div>
+            <h2 className="mt-4 text-lg font-black text-slate-900">No se admiten nuevas inscripciones</h2>
+            <p className="mx-auto mt-2 max-w-lg text-xs leading-5 text-slate-500">La actividad puede consultarse, pero el alta de nuevas familias está cerrada. Si ya realizó una inscripción, puede acceder a ella para revisarla o cancelarla.</p>
+            <button type="button" onClick={()=>setShowExistingAccess(true)} className="mt-5 min-h-12 rounded-2xl border border-slate-200 bg-white px-5 text-xs font-black text-slate-700 shadow-sm">Gestionar una inscripción existente</button>
+          </section>
+        ) : (
         <section className="rounded-[30px] border border-white bg-white p-5 shadow-[0_16px_45px_rgba(71,85,105,.09)] sm:p-7">
           {!challengeId ? <>
             <div className="flex items-start gap-3">
               <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600"><ShieldCheck size={22}/></div>
-              <div><h2 className="text-lg font-black">Verificar familia socia</h2><p className="mt-1 text-xs leading-5 text-slate-500">Introduzca el número de socio y el correo de un padre, madre o tutor que figure en la ficha de la familia.</p></div>
+              <div><h2 className="text-lg font-black">{event.isOpen?'Verificar familia socia':'Acceder a mi inscripción'}</h2><p className="mt-1 text-xs leading-5 text-slate-500">{event.isOpen?'Introduzca el número de socio y el correo de un padre, madre o tutor que figure en la ficha de la familia.':'Identifíquese únicamente si ya existe una inscripción activa para esta actividad.'}</p></div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5"><span className="text-[11px] font-bold text-slate-500">Número de socio</span><input value={membershipNumber} onChange={e=>setMembershipNumber(e.target.value)} inputMode="numeric" autoComplete="off" placeholder="Ej. 128" className="min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-50"/></label>
@@ -309,6 +320,7 @@ export function PublicEventRegistration({token}:{token:string}){
             </div>
           </>}
         </section>
+        )
       ) : (
         <section className="rounded-[30px] border border-white bg-white p-5 shadow-[0_16px_45px_rgba(71,85,105,.09)] sm:p-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -327,7 +339,7 @@ export function PublicEventRegistration({token}:{token:string}){
 
           <div className="mt-5">
             <div className="flex items-end justify-between gap-3">
-              <div><h3 className="text-sm font-black">¿Quiénes asistirán?</h3><p className="mt-1 text-[11px] text-slate-500">Seleccione hasta {event.maxAttendeesPerFamily} personas de la familia.</p></div>
+              <div><h3 className="text-sm font-black">{event.isOpen?'¿Quiénes asistirán?':'Personas incluidas en la inscripción'}</h3><p className="mt-1 text-[11px] text-slate-500">{event.isOpen?`Seleccione hasta ${event.maxAttendeesPerFamily} personas de la familia.`:'El plazo está cerrado: puede consultar la selección actual o cancelar toda la inscripción.'}</p></div>
               <span className="text-xs font-black text-indigo-600">{selected.size}/{event.maxAttendeesPerFamily}</span>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
