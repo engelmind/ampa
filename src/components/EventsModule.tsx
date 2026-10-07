@@ -612,9 +612,10 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             <h2 className="truncate text-base font-black text-slate-900">{event.title}</h2>
             <p className="mt-1 line-clamp-2 min-h-9 text-[11px] leading-4 text-slate-500">{event.description||'Sin descripción.'}</p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Familias · {event.familyParticipationRate}%</div></div>
-              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Participantes · {event.censusParticipationRate}%</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · familias</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · personas</div></div>
             </div>
+            {event.registrationEnabled&&<div className="mt-2 rounded-2xl bg-indigo-50 px-3 py-2 text-[9px] font-bold text-indigo-700">Inscritos: {event.registeredFamilyCount} familias · {event.registeredParticipantCount} personas{event.waitlistFamilyCount?' · '+event.waitlistFamilyCount+' en espera':''}</div>}
           </div>
         </button>)}
       </div>
@@ -625,22 +626,22 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             <span className="text-[10px] font-black text-indigo-600">{dateLabel(event.eventDate)}</span>
             <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-900">{event.title}</span><span className="block truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</span></span>
             <span className="w-fit rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-black text-indigo-700">{event.academicYear}</span>
-            <span className="text-[10px] font-bold text-slate-500">{event.familyCount} fam. · {event.participantCount} pers.</span>
+            <span className="text-[10px] font-bold text-slate-500">{event.registrationEnabled ? event.registeredFamilyCount+' inscr. · '+event.registeredParticipantCount+' pers.' : event.familyCount+' fam. · '+event.participantCount+' pers.'}</span>
           </button>)}
         </div>
       </div>
     ) : (
       <div className="overflow-x-auto rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
         <table className="min-w-[760px] w-full border-collapse text-left">
-          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Familias</th><th className="px-4 py-3 text-right">Participantes</th><th className="px-4 py-3 text-right">% familias</th></tr></thead>
+          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Inscritos</th><th className="px-4 py-3 text-right">Asistentes</th><th className="px-4 py-3 text-right">Espera</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {visibleEvents.map((event)=><tr key={event.id} onClick={()=>void loadDetail(event.id)} className="cursor-pointer transition hover:bg-indigo-50/40">
               <td className="whitespace-nowrap px-4 py-3 text-[11px] font-bold text-indigo-600">{dateLabel(event.eventDate)}</td>
               <td className="max-w-[360px] px-4 py-3"><div className="truncate text-xs font-black text-slate-900">{event.title}</div><div className="truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</div></td>
               <td className="whitespace-nowrap px-4 py-3 text-[10px] font-black text-slate-600">{event.academicYear}</td>
-              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.familyCount}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.registrationEnabled?event.registeredParticipantCount:'—'}</td>
               <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.participantCount}</td>
-              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{event.familyParticipationRate}%</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{event.registrationEnabled?event.waitlistFamilyCount:'—'}</td>
             </tr>)}
           </tbody>
         </table>
