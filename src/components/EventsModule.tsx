@@ -674,6 +674,27 @@ function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
           <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Curso escolar</span><input value={draft.academicYear} onChange={e=>setDraft({...draft,academicYear:e.target.value})} className="min-h-11 w-full rounded-2xl border border-slate-200 px-3 text-sm font-bold" placeholder="2026/2027" inputMode="numeric"/></label>
         </div>
         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Descripción breve</span><textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} rows={4} className="w-full rounded-2xl border border-slate-200 p-3 text-sm leading-6" placeholder="Objetivo, lugar o información útil de la actividad."/></label>
+
+        <section className={`rounded-[24px] border p-4 transition ${draft.registrationEnabled?'border-indigo-200 bg-indigo-50/45':'border-slate-200 bg-slate-50/70'}`}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" checked={draft.registrationEnabled} onChange={e=>setDraft({...draft,registrationEnabled:e.target.checked})} className="mt-1 h-4 w-4 rounded border-slate-300"/>
+            <div>
+              <div className="text-sm font-black text-slate-900">Inscripciones públicas</div>
+              <div className="mt-1 text-[11px] leading-5 text-slate-500">Genera un formulario público para que las familias socias se identifiquen, seleccionen asistentes y queden registradas automáticamente.</div>
+            </div>
+          </label>
+
+          {draft.registrationEnabled&&<div className="mt-4 space-y-4 border-t border-indigo-100 pt-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha límite</span><input type="datetime-local" value={draft.registrationDeadline||''} onChange={e=>setDraft({...draft,registrationDeadline:e.target.value||null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs"/></label>
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Aforo máximo</span><input type="number" min={1} value={draft.registrationCapacity??''} onChange={e=>setDraft({...draft,registrationCapacity:e.target.value?Number(e.target.value):null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold" placeholder="Sin límite"/></label>
+              <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Máx. por familia</span><input type="number" min={1} max={20} value={draft.maxAttendeesPerFamily} onChange={e=>setDraft({...draft,maxAttendeesPerFamily:Math.max(1,Math.min(20,Number(e.target.value||1)))})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold"/></label>
+            </div>
+            <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Mensaje para las familias</span><textarea value={draft.registrationMessage||''} onChange={e=>setDraft({...draft,registrationMessage:e.target.value})} rows={3} className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm leading-6" placeholder="Indicaciones, punto de encuentro, requisitos, edades, material necesario…"/></label>
+            <div className="rounded-2xl bg-white/80 p-3 text-[10px] leading-5 text-slate-500">Si no fija fecha límite, el formulario permanecerá abierto hasta el final del día del evento. Si se completa el aforo, las nuevas familias pasarán automáticamente a lista de espera.</div>
+          </div>}
+        </section>
+
         <div>
           <div className="mb-1 text-[11px] font-bold text-slate-500">Imagen del evento</div>
           <label onDragEnter={e=>{e.preventDefault();setDragging(true)}} onDragOver={e=>e.preventDefault()} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);void onImage(e.dataTransfer.files?.[0])}} className={`relative flex min-h-48 cursor-pointer items-center justify-center overflow-hidden rounded-[24px] border-2 border-dashed transition ${dragging?'border-indigo-400 bg-indigo-50':'border-slate-200 bg-slate-50'}`}>
