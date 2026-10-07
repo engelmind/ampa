@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, CheckCircle2, Clock3, Mail, ShieldCheck, TicketCheck,
-  UserRound, Users, XCircle, ArrowLeft, LoaderCircle
+  UserRound, Users, XCircle, ArrowLeft, LoaderCircle, Copy, Download, QrCode
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { AmpaLogo } from './AmpaLogo';
+import QRCode from 'qrcode';
 
 type PublicEvent = {
   title:string;
@@ -92,6 +93,8 @@ export function PublicEventRegistration({token}:{token:string}){
   const [guestPhone,setGuestPhone]=useState('');
   const [guestAttendees,setGuestAttendees]=useState('');
   const [now,setNow]=useState(()=>Date.now());
+  const [shareQrPng,setShareQrPng]=useState('');
+  const [shareQrSvg,setShareQrSvg]=useState('');
 
   const storageKey=`ampa-event-registration-${token}`;
   const keyOf=(m:{personType:string;personId:string})=>`${m.personType}:${m.personId}`;
@@ -119,6 +122,24 @@ export function PublicEventRegistration({token}:{token:string}){
     const timer=window.setInterval(()=>setNow(Date.now()),1000);
     return()=>window.clearInterval(timer);
   },[]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    const url=`${window.location.origin}/inscripcion/${token}`;
+    Promise.all([
+      QRCode.toDataURL(url,{width:512,margin:2,errorCorrectionLevel:'M'}),
+      QRCode.toString(url,{type:'svg',margin:2,errorCorrectionLevel:'M'})
+    ]).then(([png,svg])=>{
+      if(cancelled) return;
+      setShareQrPng(png);
+      setShareQrSvg(svg);
+    }).catch(()=>{
+      if(cancelled) return;
+      setShareQrPng('');
+      setShareQrSvg('');
+    });
+    return()=>{cancelled=true;};
+  },[token]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -257,6 +278,34 @@ export function PublicEventRegistration({token}:{token:string}){
     setMessage('');
   };
 
+  const copyShareLink=async()=>{
+    const url=`${window.location.origin}/inscripcion/${token}`;
+    try{
+      await navigator.clipboard.writeText(url);
+      setMessage('Enlace de inscripción copiado.');
+    }catch{
+      setMessage(url);
+    }
+  };
+
+  const downloadShareQr=(format:'png'|'svg')=>{
+    const safeTitle=(event?.title||'evento').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase()||'evento';
+    const link=document.createElement('a');
+    link.download=`qr-inscripcion-${safeTitle}.${format}`;
+    if(format==='png'){
+      if(!shareQrPng) return;
+      link.href=shareQrPng;
+      link.click();
+      return;
+    }
+    if(!shareQrSvg) return;
+    const blob=new Blob([shareQrSvg],{type:'image/svg+xml;charset=utf-8'});
+    const objectUrl=URL.createObjectURL(blob);
+    link.href=objectUrl;
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+  };
+
   if(loading){
     return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><LoaderCircle className="animate-spin text-indigo-500" size={28}/></div>;
   }
@@ -327,6 +376,24 @@ export function PublicEventRegistration({token}:{token:string}){
                 ? <span className="block opacity-75">Puede verificar su familia y realizar una nueva inscripción.</span>
                 : <span className="block opacity-75">No se admiten nuevas inscripciones. Las ya existentes pueden consultarse o cancelarse.</span>}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-white bg-white p-4 shadow-[0_12px_35px_rgba(71,85,105,.08)] sm:p-5">
+        <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div>
+            <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.16em] text-indigo-500"><QrCode size={14}/> Compartir esta inscripción</div>
+            <h2 className="mt-1 text-base font-black text-slate-950">Enlace y código QR del evento</h2>
+            <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">Puede copiar el enlace o descargar el QR para reenviarlo por WhatsApp, email o incluirlo en un cartel.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={()=>void copyShareLink()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-[10px] font-extrabold text-slate-700 shadow-sm"><Copy size={13}/> Copiar enlace</button>
+              <button type="button" disabled={!shareQrPng} onClick={()=>downloadShareQr('png')} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-[10px] font-extrabold text-slate-700 shadow-sm disabled:opacity-40"><Download size={13}/> QR PNG</button>
+              <button type="button" disabled={!shareQrSvg} onClick={()=>downloadShareQr('svg')} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-[10px] font-extrabold text-slate-700 shadow-sm disabled:opacity-40"><Download size={13}/> QR SVG</button>
+            </div>
+          </div>
+          <div className="mx-auto flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-2 shadow-sm sm:mx-0">
+            {shareQrPng?<img src={shareQrPng} alt={`QR para compartir la inscripción de ${event.title}`} className="h-full w-full object-contain"/>:<QrCode size={40} className="text-slate-200"/>}
           </div>
         </div>
       </section>
