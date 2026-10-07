@@ -270,6 +270,51 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     downloadPdfArtifact(createEventParticipantsPdfArtifact(detail,families,settings));
   };
 
+  const copyRegistrationLink=async()=>{
+    if(!detail?.registrationToken) return;
+    const url=`${window.location.origin}/inscripcion/${detail.registrationToken}`;
+    try{
+      await navigator.clipboard.writeText(url);
+      onNotify('success','Enlace copiado','Ya puede compartir el formulario de inscripción.');
+    }catch{
+      onNotify('info','Enlace de inscripción',url);
+    }
+  };
+
+  const loadConfirmedRegistrationsAsAttendance=async()=>{
+    if(!detail || !canEdit) return;
+    const confirmed=detail.registrations.filter((registration)=>registration.status==='confirmed');
+    if(!confirmed.length){
+      onNotify('info','Sin inscripciones confirmadas','Todavía no hay familias confirmadas que cargar.');
+      return;
+    }
+    const participantTotal=confirmed.reduce((total,registration)=>total+registration.attendees.length,0);
+    const warning=detail.attendees.length
+      ? `Esto sustituirá la participación guardada actualmente por ${confirmed.length} familias y ${participantTotal} personas inscritas y confirmadas. ¿Continuar?`
+      : `Se cargarán como participación ${confirmed.length} familias y ${participantTotal} personas confirmadas. ¿Continuar?`;
+    if(!window.confirm(warning)) return;
+    setSavingAttendance(true);
+    try{
+      const payload=confirmed.map((registration)=>({
+        familyId:registration.familyId,
+        attendees:registration.attendees.map((attendee)=>({
+          personType:attendee.personType,
+          personId:attendee.personId,
+          participantName:attendee.participantName,
+        }))
+      }));
+      const result=await backendApi.saveEventAttendance(detail.id,payload);
+      await onReload();
+      await loadDetail(detail.id);
+      setEditingAttendance(false);
+      onNotify('success','Inscritos cargados como participación',`${result.families} familias · ${result.participants} personas.`);
+    }catch(error:any){
+      onNotify('error','No se pudieron cargar las inscripciones',error?.message);
+    }finally{
+      setSavingAttendance(false);
+    }
+  };
+
   const acceptImage=async(file?:File)=>{
     if(!file || !draft) return;
     try{
