@@ -2,12 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
-      "source": "/api/:path*",
+      "source": "/backend/:path*",
       "destination": "https://dpsautgagaclgxbhzoch.supabase.co/functions/v1/ampa-api-v2/:path*"
     },
     {
-      "source": "/inscripcion/:path*",
-      "destination": "/index.html"
+      "source": "/inscripcion/:token",
+      "destination": "/api/registration-share?token=:token"
     }
   ]
 }
