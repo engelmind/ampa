@@ -329,6 +329,13 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     const summary=events.find(e=>e.id===detail.id);
     const familyRate=totals.activeFamilies ? Math.round((selectedFamilies.size/totals.activeFamilies)*1000)/10 : 0;
     const censusRate=totals.censusPeople ? Math.round((selectedParticipantCount/totals.censusPeople)*1000)/10 : 0;
+    const confirmedRegistrations=detail.registrations.filter((registration)=>registration.status==='confirmed');
+    const waitlistRegistrations=detail.registrations.filter((registration)=>registration.status==='waitlist');
+    const cancelledRegistrations=detail.registrations.filter((registration)=>registration.status==='cancelled');
+    const registeredParticipants=confirmedRegistrations.reduce((total,registration)=>total+registration.attendees.length,0);
+    const registrationLink=`${window.location.origin}/inscripcion/${detail.registrationToken}`;
+    const deadlineTime=detail.registrationDeadline ? new Date(detail.registrationDeadline).getTime() : new Date(detail.eventDate+'T23:59:59').getTime();
+    const registrationOpen=detail.registrationEnabled && Number.isFinite(deadlineTime) && deadlineTime>=Date.now();
     return <div className="space-y-4">
       <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white/90 shadow-[0_18px_50px_rgba(71,85,105,.09)]">
         <div className="grid lg:grid-cols-[280px_1fr]">
@@ -372,6 +379,72 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             {summary&&<div className="mt-3 text-[10px] font-semibold text-slate-400">Referencia guardada: {summary.familyCount} familias · {summary.participantCount} participantes</div>}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-500">Inscripciones online</div>
+              <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${!detail.registrationEnabled?'bg-slate-100 text-slate-500':registrationOpen?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
+                {!detail.registrationEnabled?'Desactivadas':registrationOpen?'Abiertas':'Cerradas'}
+              </span>
+            </div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">Formulario público para familias</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Las familias se identifican contra la base AMPA, seleccionan quién asistirá y quedan separadas de la asistencia real hasta el día del evento.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {detail.registrationEnabled&&<>
+              <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600 shadow-sm"><Copy size={14}/> Copiar enlace</button>
+              <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-2xl bg-indigo-600 px-3 text-xs font-extrabold text-white shadow-sm"><ExternalLink size={14}/> Abrir formulario</a>
+            </>}
+          </div>
+        </div>
+
+        {detail.registrationEnabled ? <>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[20px] bg-emerald-50 p-3.5"><Users size={15} className="text-emerald-600"/><div className="mt-2 text-2xl font-black text-slate-950">{confirmedRegistrations.length}</div><div className="text-[10px] font-bold text-emerald-700">Familias confirmadas</div></div>
+            <div className="rounded-[20px] bg-indigo-50 p-3.5"><UserRound size={15} className="text-indigo-600"/><div className="mt-2 text-2xl font-black text-slate-950">{registeredParticipants}</div><div className="text-[10px] font-bold text-indigo-700">Personas inscritas</div></div>
+            <div className="rounded-[20px] bg-amber-50 p-3.5"><Clock3 size={15} className="text-amber-600"/><div className="mt-2 text-2xl font-black text-slate-950">{waitlistRegistrations.length}</div><div className="text-[10px] font-bold text-amber-700">Familias en espera</div></div>
+            <div className="rounded-[20px] bg-slate-50 p-3.5"><TicketCheck size={15} className="text-slate-500"/><div className="mt-2 text-2xl font-black text-slate-950">{detail.registrationCapacity??'∞'}</div><div className="text-[10px] font-bold text-slate-500">Aforo máximo</div></div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+            <div className="flex items-start gap-2"><Link2 size={15} className="mt-0.5 shrink-0 text-indigo-500"/><div className="min-w-0"><div className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Enlace público</div><div className="mt-1 break-all font-mono text-[10px] text-indigo-900">{registrationLink}</div></div></div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Solicitudes recibidas</div>
+              <div className="mt-1 text-xs text-slate-500">{detail.registrations.length-cancelledRegistrations.length} activas · {cancelledRegistrations.length} canceladas</div>
+            </div>
+            {canEdit&&confirmedRegistrations.length>0&&<button type="button" disabled={savingAttendance} onClick={()=>void loadConfirmedRegistrationsAsAttendance()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-3 text-xs font-extrabold text-indigo-700 disabled:opacity-50"><ClipboardCheck size={15}/> Cargar confirmados como asistencia</button>}
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {detail.registrations
+              .slice()
+              .sort((a,b)=>{
+                const rank=(status:string)=>status==='confirmed'?0:status==='waitlist'?1:2;
+                return rank(a.status)-rank(b.status) || a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'});
+              })
+              .map((registration)=><div key={registration.id} className={`rounded-[22px] border p-3.5 ${registration.status==='cancelled'?'border-slate-100 bg-slate-50 opacity-60':'border-slate-100 bg-white'}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2"><strong className="text-xs font-black text-slate-900">Familia {registration.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{registration.membershipNumber}</span></div>
+                    <div className="mt-1 text-[10px] text-slate-400">{registration.attendees.map((attendee)=>attendee.participantName).join(' · ') || 'Sin personas seleccionadas'}</div>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${registration.status==='confirmed'?'bg-emerald-50 text-emerald-700':registration.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500'}`}>
+                    {registration.status==='confirmed'?'Confirmada':registration.status==='waitlist'?'Espera':'Cancelada'}
+                  </span>
+                </div>
+              </div>)}
+            {!detail.registrations.length&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-7 text-center text-xs text-slate-400">Aún no se ha recibido ninguna inscripción.</div>}
+          </div>
+        </> : <div className="mt-5 rounded-[22px] border-2 border-dashed border-slate-200 p-6 text-center">
+          <div className="text-sm font-black text-slate-600">El formulario público está desactivado</div>
+          <div className="mt-1 text-xs text-slate-400">Edite el evento y active “Inscripciones públicas” para generar su enlace.</div>
+        </div>}
       </section>
 
       {!editingAttendance ? (
