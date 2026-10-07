@@ -158,7 +158,7 @@ function normalizeGeneralSettings(raw:any) {
   };
 }
 async function loadFamilies(includeSensitive = false) {
-  const [families, guardians, students, renewals, eventFamilies, events, eventAttendees] = await Promise.all([
+  const [families, guardians, students, renewals, eventFamilies, events, eventAttendees, eventRegistrations, registrationAttendees] = await Promise.all([
     sql`select * from families order by family_name`,
     sql`select * from guardians order by created_at`,
     sql`select * from students order by created_at`,
@@ -166,6 +166,8 @@ async function loadFamilies(includeSensitive = false) {
     sql`select * from event_families order by created_at desc`,
     sql`select * from events order by event_date desc, created_at desc`,
     sql`select * from event_attendees order by created_at`,
+    sql`select * from event_registrations order by created_at desc`,
+    sql`select * from event_registration_attendees order by created_at`,
   ]);
   return families.map((f:any)=>({
     id:f.id, membershipNumber:f.membership_number, familyName:f.family_name,
@@ -183,17 +185,25 @@ async function loadFamilies(includeSensitive = false) {
       birthYear:birthYearFromDb(s.birth_date,s.birth_year),courseOffset:s.course_offset,groupLetter:s.group_letter||'',academicYear:s.academic_year,
       school:s.school||'',className:s.class_name||'',allergies:includeSensitive?(s.allergies||''):'',specialNeeds:includeSensitive?(s.special_needs||''):''
     })),
-    events:eventFamilies.filter((ef:any)=>ef.family_id===f.id).map((ef:any)=>{
-      const event=events.find((e:any)=>e.id===ef.event_id);
-      const attendees=eventAttendees.filter((a:any)=>a.event_id===ef.event_id && a.family_id===f.id);
-      return event ? {
+    events:events.map((event:any)=>{
+      const attendanceFamily=eventFamilies.find((ef:any)=>ef.family_id===f.id && ef.event_id===event.id);
+      const attendance=eventAttendees.filter((a:any)=>a.event_id===event.id && a.family_id===f.id);
+      const registration=eventRegistrations.find((r:any)=>r.family_id===f.id && r.event_id===event.id);
+      if(!attendanceFamily && !registration) return null;
+      const registered=registration
+        ? registrationAttendees.filter((a:any)=>a.registration_id===registration.id)
+        : [];
+      return {
         eventId:event.id,
         title:event.title,
         eventDate:isoDateFromDb(event.event_date),
         academicYear:event.academic_year,
-        participantCount:attendees.length,
-        participantNames:attendees.map((a:any)=>a.participant_name),
-      } : null;
+        registrationStatus:registration?.status || null,
+        registeredParticipantCount:registered.length,
+        registeredParticipantNames:registered.map((a:any)=>a.participant_name),
+        participantCount:attendance.length,
+        participantNames:attendance.map((a:any)=>a.participant_name),
+      };
     }).filter(Boolean)
   }));
 }
