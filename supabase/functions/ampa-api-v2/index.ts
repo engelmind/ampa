@@ -846,6 +846,71 @@ Deno.serve(async (req: Request) => {
       return reply({ok:true,status:finalStatus,waitlistPosition});
     }
 
+    const publicAttendeesMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/attendees$/i);
+    if(publicAttendeesMatch && req.method==='POST'){
+      const token=publicAttendeesMatch[1];
+      const body=await readBody(req);
+      const events=await sql`select id,title from events where registration_token=${token}::uuid limit 1`;
+      if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const event=events[0];
+      const session=await registrationSession(String(body.verificationToken||''),event.id);
+      if(!session) return reply({error:'VERIFICATION_EXPIRED'},401);
+
+      const registrations=await sql`
+        select id,status,verified_email
+        from event_registrations
+        where event_id=${event.id}::uuid and family_id=${session.family_id}::uuid
+        limit 1`;
+      if(!registrations.length || registrations[0].status==='cancelled') return reply({error:'REGISTRATION_NOT_FOUND'},404);
+      const registration=registrations[0];
+
+      const current=await sql`
+        select person_type,person_id,participant_name
+        from event_registration_attendees
+        where registration_id=${registration.id}::uuid
+        order by created_at`;
+      const currentMap=new Map<string,any>();
+      for(const row of current) currentMap.set(`${row.person_type}:${row.person_id}`,row);
+
+      const requested=Array.isArray(body.attendees)?body.attendees:[];
+      const keepKeys=new Set<string>();
+      for(const item of requested){
+        const personType=String(item?.personType||'');
+        const personId=String(item?.personId||'');
+        const key=`${personType}:${personId}`;
+        if(!currentMap.has(key)) return reply({error:'INVALID_ATTENDEE'},400);
+        keepKeys.add(key);
+      }
+
+      if(!keepKeys.size){
+        await sql`update event_registrations set status='cancelled',updated_at=now() where id=${registration.id}::uuid`;
+      }else{
+        for(const row of current){
+          const key=`${row.person_type}:${row.person_id}`;
+          if(!keepKeys.has(key)){
+            await sql`delete from event_registration_attendees
+              where registration_id=${registration.id}::uuid
+                and person_type=${row.person_type}
+                and person_id=${row.person_id}::uuid`;
+          }
+        }
+      }
+
+      await promoteEventWaitlist(event.id);
+      const fresh=await sql`select status from event_registrations where id=${registration.id}::uuid limit 1`;
+      const finalStatus=fresh[0]?.status||'cancelled';
+
+      await sendRegistrationMail(
+        session.verified_email,
+        finalStatus==='cancelled' ? `Inscripción cancelada · ${event.title}` : `Inscripción actualizada · ${event.title}`,
+        finalStatus==='cancelled'
+          ? `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Se ha cancelado la inscripción de la familia <strong>${escapeHtmlValue(session.family_name)}</strong> en <strong>${escapeHtmlValue(event.title)}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+          : `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Se ha actualizado la inscripción de la familia <strong>${escapeHtmlValue(session.family_name)}</strong> en <strong>${escapeHtmlValue(event.title)}</strong>.</p><p>Personas que permanecen inscritas: <strong>${keepKeys.size}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+      ).catch(()=>null);
+
+      return reply({ok:true,status:finalStatus,remainingAttendees:keepKeys.size});
+    }
+
     const publicCancelMatch=path.match(/^\/public\/events\/([0-9a-f-]+)\/cancel$/i);
     if(publicCancelMatch && req.method==='POST'){
       const token=publicCancelMatch[1];
@@ -1181,6 +1246,83 @@ Deno.serve(async (req: Request) => {
         registrationDeadline:rows[0].registration_deadline,
         deadlineCleared
       });
+    }
+
+    const adminRegistrationMatch=path.match(/^\/events\/([0-9a-f-]+)\/registrations\/([0-9a-f-]+)$/i);
+    if(adminRegistrationMatch && req.method==='PUT'){
+      const u=await requireRole(req,['superadmin','admin']);
+      const eventId=adminRegistrationMatch[1];
+      const registrationId=adminRegistrationMatch[2];
+      const body=await readBody(req);
+
+      const rows=await sql`
+        select r.id,r.family_id,r.status,r.verified_email,f.family_name,e.title
+        from event_registrations r
+        join families f on f.id=r.family_id
+        join events e on e.id=r.event_id
+        where r.id=${registrationId}::uuid and r.event_id=${eventId}::uuid
+        limit 1`;
+      if(!rows.length) return reply({error:'REGISTRATION_NOT_FOUND'},404);
+      const registration=rows[0];
+
+      const current=await sql`
+        select person_type,person_id,participant_name
+        from event_registration_attendees
+        where registration_id=${registrationId}::uuid
+        order by created_at`;
+      const currentMap=new Map<string,any>();
+      for(const row of current) currentMap.set(`${row.person_type}:${row.person_id}`,row);
+
+      const requested=Array.isArray(body.attendees)?body.attendees:[];
+      const keepKeys=new Set<string>();
+      for(const item of requested){
+        const personType=String(item?.personType||'');
+        const personId=String(item?.personId||'');
+        const key=`${personType}:${personId}`;
+        if(!currentMap.has(key)) return reply({error:'INVALID_ATTENDEE'},400);
+        keepKeys.add(key);
+      }
+
+      let cancelled=false;
+      if(!keepKeys.size){
+        cancelled=true;
+        await sql`update event_registrations set status='cancelled',updated_at=now() where id=${registrationId}::uuid`;
+      }else{
+        for(const row of current){
+          const key=`${row.person_type}:${row.person_id}`;
+          if(!keepKeys.has(key)){
+            await sql`delete from event_registration_attendees
+              where registration_id=${registrationId}::uuid
+                and person_type=${row.person_type}
+                and person_id=${row.person_id}::uuid`;
+          }
+        }
+      }
+
+      await promoteEventWaitlist(eventId);
+      const removed=current.length-keepKeys.size;
+      await log(
+        u.id,
+        'event',
+        'update',
+        cancelled
+          ? `Inscripción cancelada por administración: Familia ${registration.family_name}`
+          : `Inscripción modificada por administración: Familia ${registration.family_name} · ${removed} participante(s) dados de baja`,
+        eventId,
+        registration.title
+      );
+
+      if(registration.verified_email){
+        await sendRegistrationMail(
+          registration.verified_email,
+          cancelled ? `Inscripción cancelada · ${registration.title}` : `Inscripción actualizada · ${registration.title}`,
+          cancelled
+            ? `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>El AMPA ha tramitado la cancelación de la inscripción de la familia <strong>${escapeHtmlValue(registration.family_name)}</strong> en <strong>${escapeHtmlValue(registration.title)}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+            : `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>El AMPA ha actualizado la inscripción de la familia <strong>${escapeHtmlValue(registration.family_name)}</strong> en <strong>${escapeHtmlValue(registration.title)}</strong>.</p><p>Personas que permanecen inscritas: <strong>${keepKeys.size}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
+        ).catch(()=>null);
+      }
+
+      return reply({ok:true,cancelled,remainingAttendees:keepKeys.size});
     }
 
     if (eventMatch && req.method === 'DELETE') {
