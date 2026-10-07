@@ -270,6 +270,39 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     downloadPdfArtifact(createEventParticipantsPdfArtifact(detail,families,settings));
   };
 
+  const toggleRegistrationState=async()=>{
+    if(!detail || !canEdit) return;
+    const deadlineTime=detail.registrationDeadline ? new Date(detail.registrationDeadline).getTime() : NaN;
+    const currentlyOpen=detail.registrationEnabled && (!Number.isFinite(deadlineTime) || deadlineTime>=Date.now());
+    const nextEnabled=!currentlyOpen;
+    const confirmation=nextEnabled
+      ? '¿Abrir las inscripciones públicas de este evento ahora?'
+      : '¿Cerrar las inscripciones? Las familias ya inscritas conservarán su inscripción y podrán consultarla o cancelarla.';
+    if(!window.confirm(confirmation)) return;
+
+    setSavingEvent(true);
+    try{
+      const result=await backendApi.setEventRegistrationEnabled(detail.id,nextEnabled);
+      await onReload();
+      await loadDetail(detail.id);
+      if(nextEnabled){
+        onNotify(
+          'success',
+          'Inscripciones abiertas',
+          result.deadlineCleared
+            ? 'La fecha límite anterior ya había vencido y se ha retirado automáticamente. Puede fijar una nueva desde Editar.'
+            : 'El formulario ya admite nuevas inscripciones.'
+        );
+      }else{
+        onNotify('success','Inscripciones cerradas','No se admitirán nuevas inscripciones hasta que vuelva a abrirlas.');
+      }
+    }catch(error:any){
+      onNotify('error','No se pudo cambiar el estado de las inscripciones',error?.message);
+    }finally{
+      setSavingEvent(false);
+    }
+  };
+
   const copyRegistrationLink=async()=>{
     if(!detail?.registrationToken) return;
     const url=`${window.location.origin}/inscripcion/${detail.registrationToken}`;
@@ -391,17 +424,22 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               </span>
             </div>
             <h2 className="mt-1 text-xl font-black text-slate-950">Formulario público para familias</h2>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">Las familias se identifican contra la base AMPA, seleccionan quién asistirá y quedan separadas de la asistencia real hasta el día del evento.</p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">{registrationOpen
+              ? 'El formulario está abierto y admite nuevas inscripciones de familias socias activas.'
+              : detail.registrationEnabled
+                ? 'El plazo configurado ha finalizado. Pulse “Abrir inscripciones” para reabrirlo.'
+                : 'Las inscripciones están cerradas. La página pública puede consultarse, pero no admite nuevas altas.'}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {detail.registrationEnabled&&<>
-              <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600 shadow-sm"><Copy size={14}/> Copiar enlace</button>
-              <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-2 rounded-2xl bg-indigo-600 px-3 text-xs font-extrabold text-white shadow-sm"><ExternalLink size={14}/> Abrir formulario</a>
-            </>}
+            {canEdit&&<button type="button" disabled={savingEvent} onClick={()=>void toggleRegistrationState()} className={`flex min-h-11 items-center gap-2 rounded-2xl px-4 text-xs font-black text-white shadow-sm disabled:opacity-50 ${registrationOpen?'bg-rose-600 hover:bg-rose-700':'bg-emerald-600 hover:bg-emerald-700'}`}>
+              {registrationOpen?'Cerrar inscripciones':'Abrir inscripciones'}
+            </button>}
+            <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600 shadow-sm"><Copy size={14}/> Copiar enlace</button>
+            <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-2 rounded-2xl bg-indigo-600 px-3 text-xs font-extrabold text-white shadow-sm"><ExternalLink size={14}/> Ver página pública</a>
           </div>
         </div>
 
-        {detail.registrationEnabled ? <>
+        {(detail.registrationEnabled || detail.registrations.length>0) ? <>
           <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[20px] bg-emerald-50 p-3.5"><Users size={15} className="text-emerald-600"/><div className="mt-2 text-2xl font-black text-slate-950">{confirmedRegistrations.length}</div><div className="text-[10px] font-bold text-emerald-700">Familias confirmadas</div></div>
             <div className="rounded-[20px] bg-indigo-50 p-3.5"><UserRound size={15} className="text-indigo-600"/><div className="mt-2 text-2xl font-black text-slate-950">{registeredParticipants}</div><div className="text-[10px] font-bold text-indigo-700">Personas inscritas</div></div>
@@ -442,8 +480,8 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             {!detail.registrations.length&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-7 text-center text-xs text-slate-400">Aún no se ha recibido ninguna inscripción.</div>}
           </div>
         </> : <div className="mt-5 rounded-[22px] border-2 border-dashed border-slate-200 p-6 text-center">
-          <div className="text-sm font-black text-slate-600">El formulario público está desactivado</div>
-          <div className="mt-1 text-xs text-slate-400">Edite el evento y active “Inscripciones públicas” para generar su enlace.</div>
+          <div className="text-sm font-black text-slate-600">Inscripciones cerradas</div>
+          <div className="mt-1 text-xs text-slate-400">Configure aforo, plazo y condiciones desde “Editar” y pulse “Abrir inscripciones” cuando quiera comenzar a admitir familias.</div>
         </div>}
       </section>
 
@@ -676,24 +714,24 @@ function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
         </div>
         <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Descripción breve</span><textarea value={draft.description} onChange={e=>setDraft({...draft,description:e.target.value})} rows={4} className="w-full rounded-2xl border border-slate-200 p-3 text-sm leading-6" placeholder="Objetivo, lugar o información útil de la actividad."/></label>
 
-        <section className={`rounded-[24px] border p-4 transition ${draft.registrationEnabled?'border-indigo-200 bg-indigo-50/45':'border-slate-200 bg-slate-50/70'}`}>
-          <label className="flex cursor-pointer items-start gap-3">
-            <input type="checkbox" checked={draft.registrationEnabled} onChange={e=>setDraft({...draft,registrationEnabled:e.target.checked})} className="mt-1 h-4 w-4 rounded border-slate-300"/>
+        <section className="rounded-[24px] border border-indigo-100 bg-indigo-50/45 p-4">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-black text-slate-900">Inscripciones públicas</div>
-              <div className="mt-1 text-[11px] leading-5 text-slate-500">Genera un formulario público para que las familias socias se identifiquen, seleccionen asistentes y queden registradas automáticamente.</div>
+              <div className="text-sm font-black text-slate-900">Configuración de inscripciones</div>
+              <div className="mt-1 text-[11px] leading-5 text-slate-500">Aquí se definen las condiciones. Abrir o cerrar las inscripciones se hace desde el botón principal de la ficha del evento.</div>
             </div>
-          </label>
+            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${draft.registrationEnabled?'bg-emerald-100 text-emerald-700':'bg-slate-200 text-slate-600'}`}>{draft.registrationEnabled?'Abiertas':'Cerradas'}</span>
+          </div>
 
-          {draft.registrationEnabled&&<div className="mt-4 space-y-4 border-t border-indigo-100 pt-4">
+          <div className="mt-4 space-y-4 border-t border-indigo-100 pt-4">
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Fecha límite</span><input type="datetime-local" value={draft.registrationDeadline||''} onChange={e=>setDraft({...draft,registrationDeadline:e.target.value||null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-xs"/></label>
               <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Aforo máximo</span><input type="number" min={1} value={draft.registrationCapacity??''} onChange={e=>setDraft({...draft,registrationCapacity:e.target.value?Number(e.target.value):null})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold" placeholder="Sin límite"/></label>
               <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Máx. por familia</span><input type="number" min={1} max={20} value={draft.maxAttendeesPerFamily} onChange={e=>setDraft({...draft,maxAttendeesPerFamily:Math.max(1,Math.min(20,Number(e.target.value||1)))})} className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold"/></label>
             </div>
             <label className="space-y-1"><span className="text-[11px] font-bold text-slate-500">Mensaje para las familias</span><textarea value={draft.registrationMessage||''} onChange={e=>setDraft({...draft,registrationMessage:e.target.value})} rows={3} className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-sm leading-6" placeholder="Indicaciones, punto de encuentro, requisitos, edades, material necesario…"/></label>
-            <div className="rounded-2xl bg-white/80 p-3 text-[10px] leading-5 text-slate-500">Si no fija fecha límite, el formulario permanecerá abierto hasta el final del día del evento. Si se completa el aforo, las nuevas familias pasarán automáticamente a lista de espera.</div>
-          </div>}
+            <div className="rounded-2xl bg-white/80 p-3 text-[10px] leading-5 text-slate-500">Si no fija fecha límite, al abrir las inscripciones permanecerán disponibles hasta el final del día del evento. Si se completa el aforo, las siguientes solicitudes pasarán a lista de espera.</div>
+          </div>
         </section>
 
         <div>
