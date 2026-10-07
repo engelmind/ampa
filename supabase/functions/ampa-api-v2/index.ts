@@ -361,33 +361,33 @@ function numericMemberNumber(value:any){
 async function createRegistrationSession(eventId:string,familyId:string,email:string){
   const token=randomToken(32);
   const tokenHash=await sha256(token);
-  await sql\`delete from event_registration_sessions where expires_at < now()\`;
-  await sql\`insert into event_registration_sessions(event_id,family_id,verified_email,token_hash,expires_at)
-    values(\${eventId}::uuid,\${familyId}::uuid,\${email},\${tokenHash},now()+interval '30 minutes')\`;
+  await sql`delete from event_registration_sessions where expires_at < now()`;
+  await sql`insert into event_registration_sessions(event_id,family_id,verified_email,token_hash,expires_at)
+    values(${eventId}::uuid,${familyId}::uuid,${email},${tokenHash},now()+interval '30 minutes')`;
   return token;
 }
 
 async function registrationSession(token:string,eventId:string){
   if(!token) return null;
   const tokenHash=await sha256(token);
-  const rows=await sql\`
+  const rows=await sql`
     select s.event_id,s.family_id,s.verified_email,f.family_name,f.membership_number,f.is_active_this_year
     from event_registration_sessions s
     join families f on f.id=s.family_id
-    where s.token_hash=\${tokenHash} and s.event_id=\${eventId}::uuid and s.expires_at>now()
-    limit 1\`;
+    where s.token_hash=${tokenHash} and s.event_id=${eventId}::uuid and s.expires_at>now()
+    limit 1`;
   return rows[0] || null;
 }
 
 async function publicFamilyRegistrationState(eventId:string,familyId:string){
   const [guardians,students,registrationRows]=await Promise.all([
-    sql\`select id,first_name,last_name,relationship from guardians where family_id=\${familyId}::uuid order by created_at\`,
-    sql\`select id,first_name,last_name,class_name from students where family_id=\${familyId}::uuid order by created_at\`,
-    sql\`select r.id,r.status,r.updated_at,a.person_type,a.person_id,a.participant_name
+    sql`select id,first_name,last_name,relationship from guardians where family_id=${familyId}::uuid order by created_at`,
+    sql`select id,first_name,last_name,class_name from students where family_id=${familyId}::uuid order by created_at`,
+    sql`select r.id,r.status,r.updated_at,a.person_type,a.person_id,a.participant_name
       from event_registrations r
       left join event_registration_attendees a on a.registration_id=r.id
-      where r.event_id=\${eventId}::uuid and r.family_id=\${familyId}::uuid
-      order by a.created_at\`
+      where r.event_id=${eventId}::uuid and r.family_id=${familyId}::uuid
+      order by a.created_at`
   ]);
   const registration=registrationRows.length ? {
     id:registrationRows[0].id,
@@ -431,9 +431,9 @@ async function sendRegistrationMail(to:string,subject:string,html:string){
   if(!config.configured) return {sent:false,configured:false};
   const response=await fetch('https://api.resend.com/emails',{
     method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':\`Bearer \${config.apiKey}\`},
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${config.apiKey}`},
     body:JSON.stringify({
-      from:\`\${config.senderName} <\${config.fromEmail}>\`,
+      from:`${config.senderName} <${config.fromEmail}>`,
       to:[to],
       subject,
       html
@@ -447,39 +447,39 @@ async function promoteEventWaitlist(eventId:string){
   const promoted:Array<{email:string;familyName:string;eventTitle:string}>=[];
 
   await sql.begin(async tx=>{
-    const eventRows=await tx\`select id,title,registration_capacity from events where id=\${eventId}::uuid for update\`;
+    const eventRows=await tx`select id,title,registration_capacity from events where id=${eventId}::uuid for update`;
     if(!eventRows.length) return;
     const event=eventRows[0];
 
     if(event.registration_capacity==null){
-      const rows=await tx\`
+      const rows=await tx`
         update event_registrations r set status='confirmed',updated_at=now()
         from families f
-        where r.event_id=\${eventId}::uuid and r.status='waitlist' and f.id=r.family_id
-        returning r.verified_email,f.family_name\`;
+        where r.event_id=${eventId}::uuid and r.status='waitlist' and f.id=r.family_id
+        returning r.verified_email,f.family_name`;
       for(const row of rows) promoted.push({email:row.verified_email,familyName:row.family_name,eventTitle:event.title});
       return;
     }
 
-    const currentRows=await tx\`
+    const currentRows=await tx`
       select count(*)::int as count
       from event_registration_attendees a
       join event_registrations r on r.id=a.registration_id
-      where r.event_id=\${eventId}::uuid and r.status='confirmed'\`;
+      where r.event_id=${eventId}::uuid and r.status='confirmed'`;
     let occupied=currentRows[0]?.count||0;
-    const waiting=await tx\`
+    const waiting=await tx`
       select r.id,r.verified_email,f.family_name,count(a.person_id)::int as attendee_count
       from event_registrations r
       join families f on f.id=r.family_id
       left join event_registration_attendees a on a.registration_id=r.id
-      where r.event_id=\${eventId}::uuid and r.status='waitlist'
+      where r.event_id=${eventId}::uuid and r.status='waitlist'
       group by r.id,r.verified_email,f.family_name,r.created_at
-      order by r.created_at asc\`;
+      order by r.created_at asc`;
 
     for(const row of waiting){
       const count=row.attendee_count||0;
       if(count<1 || occupied+count>event.registration_capacity) continue;
-      await tx\`update event_registrations set status='confirmed',updated_at=now() where id=\${row.id}::uuid\`;
+      await tx`update event_registrations set status='confirmed',updated_at=now() where id=${row.id}::uuid`;
       occupied+=count;
       promoted.push({email:row.verified_email,familyName:row.family_name,eventTitle:event.title});
     }
@@ -488,8 +488,8 @@ async function promoteEventWaitlist(eventId:string){
   for(const item of promoted){
     await sendRegistrationMail(
       item.email,
-      \`Plaza confirmada · \${item.eventTitle}\`,
-      \`<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Plaza confirmada</h2><p>La inscripción de la familia <strong>\${item.familyName}</strong> ha pasado de lista de espera a <strong>confirmada</strong> para <strong>\${item.eventTitle}</strong>.</p><p>AMPA Agustinos Granada</p></div>\`
+      `Plaza confirmada · ${item.eventTitle}`,
+      `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Plaza confirmada</h2><p>La inscripción de la familia <strong>${item.familyName}</strong> ha pasado de lista de espera a <strong>confirmada</strong> para <strong>${item.eventTitle}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
     ).catch(()=>null);
   }
   return promoted;
@@ -501,17 +501,17 @@ Deno.serve(async (req: Request) => {
     const publicEventMatch=path.match(/^\/public\/events\/([0-9a-f-]+)$/i);
     if(publicEventMatch && req.method==='GET'){
       const token=publicEventMatch[1];
-      const rows=await sql\`select * from events where registration_token=\${token}::uuid limit 1\`;
+      const rows=await sql`select * from events where registration_token=${token}::uuid limit 1`;
       if(!rows.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const e=rows[0];
-      const counts=await sql\`
+      const counts=await sql`
         select
           count(distinct r.family_id) filter (where r.status='confirmed')::int as confirmed_families,
           count(a.person_id) filter (where r.status='confirmed')::int as confirmed_participants,
           count(distinct r.family_id) filter (where r.status='waitlist')::int as waitlist_families
         from event_registrations r
         left join event_registration_attendees a on a.registration_id=r.id
-        where r.event_id=\${e.id}::uuid\`;
+        where r.event_id=${e.id}::uuid`;
       const confirmedParticipants=counts[0]?.confirmed_participants||0;
       const capacity=e.registration_capacity==null?null:Number(e.registration_capacity);
       return reply({event:{
@@ -541,24 +541,24 @@ Deno.serve(async (req: Request) => {
       const email=String(body.email||'').trim().toLowerCase();
       if(!memberInput || !email || email.length>254) return reply({error:'INVALID_IDENTIFICATION'},400);
 
-      const events=await sql\`select * from events where registration_token=\${token}::uuid limit 1\`;
+      const events=await sql`select * from events where registration_token=${token}::uuid limit 1`;
       if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const event=events[0];
       const eventOpen=await eventRegistrationOpen(event);
 
       const memberNormalized=numericMemberNumber(memberInput);
-      const matches=await sql\`
+      const matches=await sql`
         select f.id as family_id,f.family_name,f.membership_number,f.is_active_this_year,
                g.id as guardian_id,g.email
         from families f
         join guardians g on g.family_id=f.id
-        where lower(trim(coalesce(g.email,'')))=\${email}
+        where lower(trim(coalesce(g.email,'')))=${email}
           and (
-            lower(trim(f.membership_number))=lower(trim(\${memberInput}))
-            or ltrim(regexp_replace(f.membership_number,'\\D','','g'),'0')=\${memberNormalized}
+            lower(trim(f.membership_number))=lower(trim(${memberInput}))
+            or ltrim(regexp_replace(f.membership_number,'\\D','','g'),'0')=${memberNormalized}
           )
         order by g.is_main_contact desc,g.created_at
-        limit 1\`;
+        limit 1`;
       const match=matches[0];
       if(!match) return reply({error:'MEMBERSHIP_NOT_VERIFIED'},422);
       if(!match.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
@@ -571,35 +571,35 @@ Deno.serve(async (req: Request) => {
       if(!event.registration_enabled && !existingRegistration.length) return reply({error:'REGISTRATION_DISABLED'},409);
       if(!eventOpen && !existingRegistration.length) return reply({error:'REGISTRATION_CLOSED'},409);
 
-      const recent=await sql\`
+      const recent=await sql`
         select count(*)::int as count from event_registration_challenges
-        where event_id=\${event.id}::uuid and family_id=\${match.family_id}::uuid
-          and created_at>now()-interval '15 minutes'\`;
+        where event_id=${event.id}::uuid and family_id=${match.family_id}::uuid
+          and created_at>now()-interval '15 minutes'`;
       if((recent[0]?.count||0)>=4) return reply({error:'TOO_MANY_CODES'},429);
 
       const mailConfig=await getEmailProviderConfig();
       const challengeId=crypto.randomUUID();
 
       if(!mailConfig.configured){
-        await sql\`insert into event_registration_challenges(id,event_id,family_id,guardian_id,email,code_hash,verified_at)
-          values(\${challengeId}::uuid,\${event.id}::uuid,\${match.family_id}::uuid,\${match.guardian_id}::uuid,\${email},null,now())\`;
+        await sql`insert into event_registration_challenges(id,event_id,family_id,guardian_id,email,code_hash,verified_at)
+          values(${challengeId}::uuid,${event.id}::uuid,${match.family_id}::uuid,${match.guardian_id}::uuid,${email},null,now())`;
         const verificationToken=await createRegistrationSession(event.id,match.family_id,email);
         return reply({ok:true,mode:'direct',verificationToken});
       }
 
       const random=crypto.getRandomValues(new Uint32Array(1))[0];
       const code=String(100000+(random%900000));
-      const codeHash=await sha256(\`\${challengeId}:\${code}\`);
-      await sql\`insert into event_registration_challenges(id,event_id,family_id,guardian_id,email,code_hash)
-        values(\${challengeId}::uuid,\${event.id}::uuid,\${match.family_id}::uuid,\${match.guardian_id}::uuid,\${email},\${codeHash})\`;
+      const codeHash=await sha256(`${challengeId}:${code}`);
+      await sql`insert into event_registration_challenges(id,event_id,family_id,guardian_id,email,code_hash)
+        values(${challengeId}::uuid,${event.id}::uuid,${match.family_id}::uuid,${match.guardian_id}::uuid,${email},${codeHash})`;
 
       const sent=await sendRegistrationMail(
         email,
-        \`Código de inscripción · \${event.title}\`,
-        \`<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Hola,</p><p>Tu código para gestionar la inscripción de la familia <strong>\${escapeHtmlValue(match.family_name)}</strong> en <strong>\${escapeHtmlValue(event.title)}</strong> es:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;margin:22px 0">\${code}</div><p>Caduca en 10 minutos. Si no has solicitado este código, ignora este mensaje.</p><p>AMPA Agustinos Granada</p></div>\`
+        `Código de inscripción · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Hola,</p><p>Tu código para gestionar la inscripción de la familia <strong>${escapeHtmlValue(match.family_name)}</strong> en <strong>${escapeHtmlValue(event.title)}</strong> es:</p><div style="font-size:32px;font-weight:800;letter-spacing:8px;margin:22px 0">${code}</div><p>Caduca en 10 minutos. Si no has solicitado este código, ignora este mensaje.</p><p>AMPA Agustinos Granada</p></div>`
       );
       if(!sent.sent){
-        await sql\`delete from event_registration_challenges where id=\${challengeId}::uuid\`;
+        await sql`delete from event_registration_challenges where id=${challengeId}::uuid`;
         return reply({error:'EMAIL_PROVIDER_FAILED'},502);
       }
       return reply({ok:true,mode:'otp',challengeId});
@@ -612,22 +612,22 @@ Deno.serve(async (req: Request) => {
       const challengeId=String(body.challengeId||'');
       const code=String(body.code||'').replace(/\D/g,'').slice(0,6);
       if(!challengeId || code.length!==6) return reply({error:'INVALID_CODE'},400);
-      const rows=await sql\`
+      const rows=await sql`
         select c.*,f.is_active_this_year,e.registration_token
         from event_registration_challenges c
         join families f on f.id=c.family_id
         join events e on e.id=c.event_id
-        where c.id=\${challengeId}::uuid and e.registration_token=\${token}::uuid
-        limit 1\`;
+        where c.id=${challengeId}::uuid and e.registration_token=${token}::uuid
+        limit 1`;
       const challenge=rows[0];
       if(!challenge || challenge.verified_at || new Date(challenge.expires_at).getTime()<Date.now() || challenge.attempts>=5) {
         return reply({error:'CODE_EXPIRED'},410);
       }
-      await sql\`update event_registration_challenges set attempts=attempts+1 where id=\${challengeId}::uuid\`;
-      const expected=await sha256(\`\${challengeId}:\${code}\`);
+      await sql`update event_registration_challenges set attempts=attempts+1 where id=${challengeId}::uuid`;
+      const expected=await sha256(`${challengeId}:${code}`);
       if(expected!==challenge.code_hash) return reply({error:'INVALID_CODE'},400);
       if(!challenge.is_active_this_year) return reply({error:'MEMBERSHIP_INACTIVE'},403);
-      await sql\`update event_registration_challenges set verified_at=now() where id=\${challengeId}::uuid\`;
+      await sql`update event_registration_challenges set verified_at=now() where id=${challengeId}::uuid`;
       const verificationToken=await createRegistrationSession(challenge.event_id,challenge.family_id,challenge.email);
       return reply({ok:true,verificationToken});
     }
@@ -636,7 +636,7 @@ Deno.serve(async (req: Request) => {
     if(publicSessionMatch && req.method==='POST'){
       const token=publicSessionMatch[1];
       const body=await readBody(req);
-      const events=await sql\`select id from events where registration_token=\${token}::uuid limit 1\`;
+      const events=await sql`select id from events where registration_token=${token}::uuid limit 1`;
       if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const session=await registrationSession(String(body.verificationToken||''),events[0].id);
       if(!session) return reply({error:'VERIFICATION_EXPIRED'},401);
@@ -656,7 +656,7 @@ Deno.serve(async (req: Request) => {
     if(publicRegisterMatch && req.method==='POST'){
       const token=publicRegisterMatch[1];
       const body=await readBody(req);
-      const eventRows=await sql\`select * from events where registration_token=\${token}::uuid limit 1\`;
+      const eventRows=await sql`select * from events where registration_token=${token}::uuid limit 1`;
       if(!eventRows.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const event=eventRows[0];
       if(!event.registration_enabled || !await eventRegistrationOpen(event)) return reply({error:'REGISTRATION_CLOSED'},409);
@@ -671,7 +671,7 @@ Deno.serve(async (req: Request) => {
         const personType=item?.personType;
         const personId=String(item?.personId||'');
         if(!['guardian','student'].includes(personType) || !/^[0-9a-f-]{36}$/i.test(personId)) continue;
-        const key=\`\${personType}:\${personId}\`;
+        const key=`${personType}:${personId}`;
         if(uniqueKeys.has(key)) continue;
         uniqueKeys.add(key);
         normalized.push({personType,personId});
@@ -682,63 +682,63 @@ Deno.serve(async (req: Request) => {
       let finalStatus='confirmed';
       let registrationId='';
       await sql.begin(async tx=>{
-        const locked=await tx\`select * from events where id=\${event.id}::uuid for update\`;
+        const locked=await tx`select * from events where id=${event.id}::uuid for update`;
         const current=locked[0];
         if(!current || !current.registration_enabled) throw Object.assign(new Error('REGISTRATION_CLOSED'),{status:409});
 
         const [guardians,students]=await Promise.all([
-          tx\`select id,first_name,last_name from guardians where family_id=\${session.family_id}::uuid\`,
-          tx\`select id,first_name,last_name from students where family_id=\${session.family_id}::uuid\`
+          tx`select id,first_name,last_name from guardians where family_id=${session.family_id}::uuid`,
+          tx`select id,first_name,last_name from students where family_id=${session.family_id}::uuid`
         ]);
         const valid=new Map<string,string>();
-        for(const g of guardians) valid.set(\`guardian:\${g.id}\`,[g.first_name,g.last_name].filter(Boolean).join(' '));
-        for(const s of students) valid.set(\`student:\${s.id}\`,[s.first_name,s.last_name].filter(Boolean).join(' '));
+        for(const g of guardians) valid.set(`guardian:${g.id}`,[g.first_name,g.last_name].filter(Boolean).join(' '));
+        for(const s of students) valid.set(`student:${s.id}`,[s.first_name,s.last_name].filter(Boolean).join(' '));
         for(const item of normalized){
-          if(!valid.has(\`\${item.personType}:\${item.personId}\`)) throw Object.assign(new Error('INVALID_ATTENDEE'),{status:400});
+          if(!valid.has(`${item.personType}:${item.personId}`)) throw Object.assign(new Error('INVALID_ATTENDEE'),{status:400});
         }
 
-        const occupiedRows=await tx\`
+        const occupiedRows=await tx`
           select count(*)::int as count
           from event_registration_attendees a
           join event_registrations r on r.id=a.registration_id
-          where r.event_id=\${event.id}::uuid and r.status='confirmed' and r.family_id<>\${session.family_id}::uuid\`;
+          where r.event_id=${event.id}::uuid and r.status='confirmed' and r.family_id<>${session.family_id}::uuid`;
         const occupied=occupiedRows[0]?.count||0;
         const capacity=current.registration_capacity==null?null:Number(current.registration_capacity);
         finalStatus=capacity!=null && occupied+normalized.length>capacity ? 'waitlist' : 'confirmed';
 
-        const rows=await tx\`
+        const rows=await tx`
           insert into event_registrations(event_id,family_id,status,verified_email,updated_at)
-          values(\${event.id}::uuid,\${session.family_id}::uuid,\${finalStatus},\${session.verified_email},now())
+          values(${event.id}::uuid,${session.family_id}::uuid,${finalStatus},${session.verified_email},now())
           on conflict(event_id,family_id) do update set
             status=excluded.status,verified_email=excluded.verified_email,updated_at=now()
-          returning id\`;
+          returning id`;
         registrationId=rows[0].id;
-        await tx\`delete from event_registration_attendees where registration_id=\${registrationId}::uuid\`;
+        await tx`delete from event_registration_attendees where registration_id=${registrationId}::uuid`;
         for(const item of normalized){
-          const name=valid.get(\`\${item.personType}:\${item.personId}\`)||'';
-          await tx\`insert into event_registration_attendees(registration_id,person_type,person_id,participant_name)
-            values(\${registrationId}::uuid,\${item.personType},\${item.personId}::uuid,\${name})\`;
+          const name=valid.get(`${item.personType}:${item.personId}`)||'';
+          await tx`insert into event_registration_attendees(registration_id,person_type,person_id,participant_name)
+            values(${registrationId}::uuid,${item.personType},${item.personId}::uuid,${name})`;
         }
       });
 
       await promoteEventWaitlist(event.id);
-      const fresh=await sql\`select status from event_registrations where id=\${registrationId}::uuid limit 1\`;
+      const fresh=await sql`select status from event_registrations where id=${registrationId}::uuid limit 1`;
       finalStatus=fresh[0]?.status||finalStatus;
       let waitlistPosition:null|number=null;
       if(finalStatus==='waitlist'){
-        const pos=await sql\`
+        const pos=await sql`
           select count(*)::int as position
           from event_registrations r
-          where r.event_id=\${event.id}::uuid and r.status='waitlist'
-            and r.created_at <= (select created_at from event_registrations where id=\${registrationId}::uuid)\`;
+          where r.event_id=${event.id}::uuid and r.status='waitlist'
+            and r.created_at <= (select created_at from event_registrations where id=${registrationId}::uuid)`;
         waitlistPosition=pos[0]?.position||1;
       }
 
       const statusText=finalStatus==='confirmed'?'confirmada':'en lista de espera';
       await sendRegistrationMail(
         session.verified_email,
-        \`Inscripción \${statusText} · \${event.title}\`,
-        \`<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Inscripción \${statusText}</h2><p>La inscripción de la familia <strong>\${escapeHtmlValue(session.family_name)}</strong> para <strong>\${escapeHtmlValue(event.title)}</strong> ha quedado <strong>\${statusText}</strong>.</p><p>Personas incluidas: <strong>\${normalized.length}</strong>.</p><p>Puedes volver al mismo enlace para modificar o cancelar la inscripción.</p><p>AMPA Agustinos Granada</p></div>\`
+        `Inscripción ${statusText} · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><h2>Inscripción ${statusText}</h2><p>La inscripción de la familia <strong>${escapeHtmlValue(session.family_name)}</strong> para <strong>${escapeHtmlValue(event.title)}</strong> ha quedado <strong>${statusText}</strong>.</p><p>Personas incluidas: <strong>${normalized.length}</strong>.</p><p>Puedes volver al mismo enlace para modificar o cancelar la inscripción.</p><p>AMPA Agustinos Granada</p></div>`
       ).catch(()=>null);
 
       return reply({ok:true,status:finalStatus,waitlistPosition});
@@ -748,21 +748,21 @@ Deno.serve(async (req: Request) => {
     if(publicCancelMatch && req.method==='POST'){
       const token=publicCancelMatch[1];
       const body=await readBody(req);
-      const events=await sql\`select id,title from events where registration_token=\${token}::uuid limit 1\`;
+      const events=await sql`select id,title from events where registration_token=${token}::uuid limit 1`;
       if(!events.length) return reply({error:'EVENT_NOT_FOUND'},404);
       const event=events[0];
       const session=await registrationSession(String(body.verificationToken||''),event.id);
       if(!session) return reply({error:'VERIFICATION_EXPIRED'},401);
-      const rows=await sql\`
+      const rows=await sql`
         update event_registrations set status='cancelled',updated_at=now()
-        where event_id=\${event.id}::uuid and family_id=\${session.family_id}::uuid
-        returning id\`;
+        where event_id=${event.id}::uuid and family_id=${session.family_id}::uuid
+        returning id`;
       if(!rows.length) return reply({error:'REGISTRATION_NOT_FOUND'},404);
       await promoteEventWaitlist(event.id);
       await sendRegistrationMail(
         session.verified_email,
-        \`Inscripción cancelada · \${event.title}\`,
-        \`<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Se ha cancelado la inscripción de la familia <strong>\${escapeHtmlValue(session.family_name)}</strong> en <strong>\${escapeHtmlValue(event.title)}</strong>.</p><p>AMPA Agustinos Granada</p></div>\`
+        `Inscripción cancelada · ${event.title}`,
+        `<div style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.6"><p>Se ha cancelado la inscripción de la familia <strong>${escapeHtmlValue(session.family_name)}</strong> en <strong>${escapeHtmlValue(event.title)}</strong>.</p><p>AMPA Agustinos Granada</p></div>`
       ).catch(()=>null);
       return reply({ok:true});
     }
