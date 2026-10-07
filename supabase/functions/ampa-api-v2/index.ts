@@ -247,6 +247,10 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
   if (!rows.length) throw Object.assign(new Error('BACKUP_NOT_FOUND'), {status:404});
   const payload = rows[0].payload || {};
   await sql.begin(async tx => {
+    await tx`delete from event_registration_sessions`;
+    await tx`delete from event_registration_challenges`;
+    await tx`delete from event_registration_attendees`;
+    await tx`delete from event_registrations`;
     await tx`delete from event_attendees`;
     await tx`delete from event_families`;
     await tx`delete from events`;
@@ -280,9 +284,17 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
         ${r.renewed_by||null}::uuid,${r.created_at||new Date().toISOString()}::timestamptz,${r.updated_at||new Date().toISOString()}::timestamptz)`;
     }
     for (const e of payload.events || []) {
-      await tx`insert into events(id,title,event_date,academic_year,description,image_data_url,created_by,created_at,updated_at)
-        values(${e.id}::uuid,${e.title},${e.event_date}::date,${e.academic_year||''},${e.description||''},${e.image_data_url||null},
-        ${e.created_by||null}::uuid,${e.created_at||new Date().toISOString()}::timestamptz,${e.updated_at||new Date().toISOString()}::timestamptz)`;
+      await tx`insert into events(
+          id,title,event_date,academic_year,description,image_data_url,created_by,
+          registration_enabled,registration_deadline,registration_capacity,max_attendees_per_family,registration_message,registration_token,
+          created_at,updated_at
+        )
+        values(
+          ${e.id}::uuid,${e.title},${e.event_date}::date,${e.academic_year||''},${e.description||''},${e.image_data_url||null},${e.created_by||null}::uuid,
+          ${!!e.registration_enabled},${e.registration_deadline||null}::timestamptz,${e.registration_capacity||null},${e.max_attendees_per_family||8},${e.registration_message||''},
+          coalesce(${e.registration_token||null}::uuid,gen_random_uuid()),
+          ${e.created_at||new Date().toISOString()}::timestamptz,${e.updated_at||new Date().toISOString()}::timestamptz
+        )`;
     }
     for (const ef of payload.eventFamilies || []) {
       await tx`insert into event_families(event_id,family_id,created_at)
@@ -292,6 +304,16 @@ async function restoreSnapshot(snapshotId:string, userId:string) {
       await tx`insert into event_attendees(id,event_id,family_id,person_type,person_id,participant_name,created_at)
         values(${ea.id}::uuid,${ea.event_id}::uuid,${ea.family_id}::uuid,${ea.person_type},${ea.person_id||null}::uuid,
         ${ea.participant_name},${ea.created_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const er of payload.eventRegistrations || []) {
+      await tx`insert into event_registrations(id,event_id,family_id,status,verified_email,created_at,updated_at)
+        values(${er.id}::uuid,${er.event_id}::uuid,${er.family_id}::uuid,${er.status||'confirmed'},${er.verified_email||''},
+        ${er.created_at||new Date().toISOString()}::timestamptz,${er.updated_at||new Date().toISOString()}::timestamptz)`;
+    }
+    for (const era of payload.eventRegistrationAttendees || []) {
+      await tx`insert into event_registration_attendees(registration_id,person_type,person_id,participant_name,created_at)
+        values(${era.registration_id}::uuid,${era.person_type},${era.person_id}::uuid,${era.participant_name},
+        ${era.created_at||new Date().toISOString()}::timestamptz)`;
     }
     if (payload.settings) {
       const cleanSettings = normalizeGeneralSettings(payload.settings);
