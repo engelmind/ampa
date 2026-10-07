@@ -220,6 +220,36 @@ export function PublicEventRegistration({token}:{token:string}){
     }
   };
 
+  const saveAttendeeReductions=async()=>{
+    if(!verificationToken || !registration || registration.status==='cancelled') return;
+    if(!selected.size){
+      await cancelRegistration();
+      return;
+    }
+    const currentCount=registration.attendees.length;
+    if(selected.size>=currentCount){
+      setMessage('No hay ninguna baja pendiente de guardar.');
+      return;
+    }
+    if(!window.confirm(`¿Guardar la baja de ${currentCount-selected.size} participante(s) y mantener al resto de la familia inscrita?`)) return;
+    setMessage('');
+    setBusy(true);
+    try{
+      const response=await backendApi.updatePublicEventRegistrationAttendees(
+        token,
+        verificationToken,
+        selectedMembers.map((member)=>({personType:member.personType,personId:member.personId}))
+      );
+      await refreshEvent();
+      await loadSession(verificationToken);
+      setMessage(`Baja tramitada correctamente. Permanecen inscritas ${response.remainingAttendees} persona(s).`);
+    }catch(error:any){
+      setMessage(errorText(error));
+    }finally{
+      setBusy(false);
+    }
+  };
+
   const saveGuestRegistration=async()=>{
     const names=guestAttendees.split(/\n+/).map((name)=>name.trim()).filter(Boolean);
     setMessage('');
@@ -481,7 +511,7 @@ export function PublicEventRegistration({token}:{token:string}){
 
           <div className="mt-5">
             <div className="flex items-end justify-between gap-3">
-              <div><h3 className="text-sm font-black">{event.isOpen?'¿Quiénes asistirán?':'Personas incluidas en la inscripción'}</h3><p className="mt-1 text-[11px] text-slate-500">{event.isOpen?`Seleccione hasta ${event.maxAttendeesPerFamily} personas de la familia.`:'El plazo está cerrado: puede consultar la selección actual o cancelar toda la inscripción.'}</p></div>
+              <div><h3 className="text-sm font-black">{event.isOpen?'¿Quiénes asistirán?':'Gestionar bajas de asistentes'}</h3><p className="mt-1 text-[11px] text-slate-500">{event.isOpen?`Seleccione hasta ${event.maxAttendeesPerFamily} personas de la familia.`:'Aunque el plazo esté cerrado, puede dar de baja a uno o varios asistentes ya inscritos. No se pueden añadir nuevas personas fuera de plazo.'}</p></div>
               <span className="text-xs font-black text-indigo-600">{selected.size}/{event.maxAttendeesPerFamily}</span>
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -490,8 +520,8 @@ export function PublicEventRegistration({token}:{token:string}){
                 const checked=selected.has(key);
                 const disabled=!checked && selected.size>=event.maxAttendeesPerFamily;
                 return <label key={key} className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-3 transition ${checked?'border-indigo-200 bg-indigo-50/70':'border-slate-100 bg-slate-50'} ${disabled?'opacity-45':''}`}>
-                  <input type="checkbox" checked={checked} disabled={disabled||!event.isOpen} onChange={()=>{
-                    setSelected(prev=>{const next=new Set(prev); if(next.has(key)) next.delete(key); else next.add(key); return next;});
+                  <input type="checkbox" checked={checked} disabled={disabled||(!event.isOpen&&!checked)} onChange={()=>{
+                    setSelected(prev=>{const next=new Set(prev); if(next.has(key)) next.delete(key); else if(event.isOpen) next.add(key); return next;});
                   }} className="h-4 w-4 rounded border-slate-300"/>
                   <div className="min-w-0"><div className="truncate text-xs font-black text-slate-800">{member.name}</div><div className="mt-0.5 text-[10px] text-slate-400">{member.detail}</div></div>
                 </label>;
@@ -502,8 +532,10 @@ export function PublicEventRegistration({token}:{token:string}){
           {message&&<p className="mt-4 text-xs font-semibold text-slate-600">{message}</p>}
 
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            {existingActive&&<button type="button" disabled={busy} onClick={()=>void cancelRegistration()} className="min-h-12 rounded-2xl border border-rose-200 bg-white px-5 text-xs font-black text-rose-600 disabled:opacity-40">Cancelar inscripción</button>}
-            {event.isOpen&&<button type="button" disabled={busy||!selected.size} onClick={()=>void saveRegistration()} className="min-h-12 rounded-2xl bg-slate-950 px-6 text-xs font-black text-white disabled:opacity-40">{busy?'Guardando…':existingActive?'Actualizar inscripción':'Confirmar inscripción'}</button>}
+            {existingActive&&<button type="button" disabled={busy} onClick={()=>void cancelRegistration()} className="min-h-12 rounded-2xl border border-rose-200 bg-white px-5 text-xs font-black text-rose-600 disabled:opacity-40">Dar de baja a toda la familia</button>}
+            {event.isOpen
+              ? <button type="button" disabled={busy||!selected.size} onClick={()=>void saveRegistration()} className="min-h-12 rounded-2xl bg-slate-950 px-6 text-xs font-black text-white disabled:opacity-40">{busy?'Guardando…':existingActive?'Actualizar inscripción':'Confirmar inscripción'}</button>
+              : existingActive&&<button type="button" disabled={busy||selected.size===registration?.attendees.length} onClick={()=>void saveAttendeeReductions()} className="min-h-12 rounded-2xl bg-slate-950 px-6 text-xs font-black text-white disabled:opacity-40">{busy?'Guardando…':'Guardar bajas de asistentes'}</button>}
           </div>
         </section>
       )}
