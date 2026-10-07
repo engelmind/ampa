@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, ChevronLeft, FileDown, ImagePlus, Pencil, Plus, Save, Search, Trash2,
-  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck, Clock3, TicketCheck
+  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck, Clock3, TicketCheck, QrCode, Download
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
 import { createEventParticipantsPdfArtifact, downloadPdfArtifact } from '../utils/pdfExportUtils';
+import QRCode from 'qrcode';
 
 interface Props {
   families: Family[];
@@ -96,6 +97,8 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   const [eventQuery,setEventQuery]=useState('');
   const [academicYearFilter,setAcademicYearFilter]=useState('all');
   const [eventView,setEventView]=useState<EventViewMode>('cards');
+  const [registrationQrPng,setRegistrationQrPng]=useState('');
+  const [registrationQrSvg,setRegistrationQrSvg]=useState('');
 
   const academicYears=useMemo(()=>Array.from(new Set([
     settings.activeAcademicYear,
@@ -152,6 +155,30 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       setDetail(null);
     }
   },[events,selectedId]);
+
+  useEffect(()=>{
+    const token=detail?.registrationToken;
+    if(!token){
+      setRegistrationQrPng('');
+      setRegistrationQrSvg('');
+      return;
+    }
+    let cancelled=false;
+    const url=`${window.location.origin}/inscripcion/${token}`;
+    Promise.all([
+      QRCode.toDataURL(url,{width:512,margin:2,errorCorrectionLevel:'M'}),
+      QRCode.toString(url,{type:'svg',margin:2,errorCorrectionLevel:'M'})
+    ]).then(([png,svg])=>{
+      if(cancelled) return;
+      setRegistrationQrPng(png);
+      setRegistrationQrSvg(svg);
+    }).catch(()=>{
+      if(cancelled) return;
+      setRegistrationQrPng('');
+      setRegistrationQrSvg('');
+    });
+    return()=>{cancelled=true;};
+  },[detail?.registrationToken]);
 
   const toggleFamily=(familyId:string)=>{
     const family=families.find((item)=>item.id===familyId);
@@ -315,6 +342,25 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     }
   };
 
+  const downloadRegistrationQr=(format:'png'|'svg')=>{
+    if(!detail?.registrationToken) return;
+    const safeTitle=(detail.title||'evento').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase()||'evento';
+    const link=document.createElement('a');
+    link.download=`qr-inscripcion-${safeTitle}.${format}`;
+    if(format==='png'){
+      if(!registrationQrPng) return;
+      link.href=registrationQrPng;
+      link.click();
+      return;
+    }
+    if(!registrationQrSvg) return;
+    const blob=new Blob([registrationQrSvg],{type:'image/svg+xml;charset=utf-8'});
+    const objectUrl=URL.createObjectURL(blob);
+    link.href=objectUrl;
+    link.click();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+  };
+
   const loadConfirmedRegistrationsAsAttendance=async()=>{
     if(!detail || !canEdit) return;
     const confirmed=detail.registrations.filter((registration)=>registration.status==='confirmed');
@@ -442,16 +488,40 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
           </div>
         </div>
 
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white p-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-2xl bg-white p-2.5 text-indigo-600 shadow-sm"><Link2 size={17}/></div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Enlace público de inscripción</div>
+                <div className="mt-1 break-all font-mono text-[10px] leading-5 text-indigo-950">{registrationLink}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-9 items-center gap-2 rounded-xl border border-indigo-100 bg-white px-3 text-[10px] font-extrabold text-indigo-700 shadow-sm"><Copy size={13}/> Copiar enlace</button>
+                  <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2 rounded-xl bg-indigo-600 px-3 text-[10px] font-extrabold text-white shadow-sm"><ExternalLink size={13}/> Abrir formulario</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-100 bg-white p-4 text-center shadow-sm">
+            <div className="flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><QrCode size={14}/> QR de inscripción</div>
+            <div className="mx-auto mt-3 flex h-36 w-36 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-2">
+              {registrationQrPng?<img src={registrationQrPng} alt={`QR de inscripción para ${detail.title}`} className="h-full w-full object-contain"/>:<QrCode size={48} className="text-slate-200"/>}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" disabled={!registrationQrPng} onClick={()=>downloadRegistrationQr('png')} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-extrabold text-slate-600 disabled:opacity-40"><Download size={12}/> PNG</button>
+              <button type="button" disabled={!registrationQrSvg} onClick={()=>downloadRegistrationQr('svg')} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-extrabold text-slate-600 disabled:opacity-40"><Download size={12}/> SVG</button>
+            </div>
+            <div className="mt-2 text-[9px] leading-4 text-slate-400">El mismo QR sigue siendo válido aunque abra o cierre las inscripciones.</div>
+          </div>
+        </div>
+
         {(detail.registrationEnabled || detail.registrations.length>0) ? <>
           <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[20px] bg-emerald-50 p-3.5"><Users size={15} className="text-emerald-600"/><div className="mt-2 text-2xl font-black text-slate-950">{confirmedRegistrations.length}</div><div className="text-[10px] font-bold text-emerald-700">Familias confirmadas</div></div>
             <div className="rounded-[20px] bg-indigo-50 p-3.5"><UserRound size={15} className="text-indigo-600"/><div className="mt-2 text-2xl font-black text-slate-950">{registeredParticipants}</div><div className="text-[10px] font-bold text-indigo-700">Personas inscritas</div></div>
             <div className="rounded-[20px] bg-amber-50 p-3.5"><Clock3 size={15} className="text-amber-600"/><div className="mt-2 text-2xl font-black text-slate-950">{waitlistRegistrations.length}</div><div className="text-[10px] font-bold text-amber-700">Familias en espera</div></div>
             <div className="rounded-[20px] bg-slate-50 p-3.5"><TicketCheck size={15} className="text-slate-500"/><div className="mt-2 text-2xl font-black text-slate-950">{detail.registrationCapacity??'∞'}</div><div className="text-[10px] font-bold text-slate-500">Aforo máximo</div></div>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
-            <div className="flex items-start gap-2"><Link2 size={15} className="mt-0.5 shrink-0 text-indigo-500"/><div className="min-w-0"><div className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Enlace público</div><div className="mt-1 break-all font-mono text-[10px] text-indigo-900">{registrationLink}</div></div></div>
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
