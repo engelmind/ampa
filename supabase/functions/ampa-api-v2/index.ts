@@ -1037,6 +1037,47 @@ Deno.serve(async (req: Request) => {
       return reply({ok:true});
     }
 
+    const registrationToggleMatch=path.match(/^\/events\/([0-9a-f-]+)\/registration$/i);
+    if (registrationToggleMatch && req.method === 'PATCH') {
+      const u=await requireRole(req,['superadmin','admin']);
+      const id=registrationToggleMatch[1];
+      const body=await readBody(req);
+      if(typeof body.enabled!=='boolean') return reply({error:'INVALID_REGISTRATION_STATE'},400);
+
+      const currentRows=await sql`select title,registration_deadline from events where id=${id}::uuid limit 1`;
+      if(!currentRows.length) return reply({error:'EVENT_NOT_FOUND'},404);
+      const current=currentRows[0];
+
+      let deadlineCleared=false;
+      if(body.enabled && current.registration_deadline && new Date(current.registration_deadline).getTime() < Date.now()){
+        deadlineCleared=true;
+      }
+
+      const rows=await sql`
+        update events
+        set registration_enabled=${body.enabled},
+            registration_deadline=case when ${deadlineCleared} then null else registration_deadline end,
+            updated_at=now()
+        where id=${id}::uuid
+        returning title,registration_enabled,registration_deadline`;
+
+      await log(
+        u.id,
+        'event',
+        'update',
+        body.enabled ? 'Inscripciones abiertas' : 'Inscripciones cerradas',
+        id,
+        rows[0].title
+      );
+
+      return reply({
+        ok:true,
+        registrationEnabled:!!rows[0].registration_enabled,
+        registrationDeadline:rows[0].registration_deadline,
+        deadlineCleared
+      });
+    }
+
     if (eventMatch && req.method === 'DELETE') {
       const u=await requireRole(req,['superadmin']);
       const id=eventMatch[1];

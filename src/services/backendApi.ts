@@ -52,6 +52,12 @@ export const backendApi = {
     request<{ event: { id: string } }>('/api/events', { method:'POST', body:JSON.stringify(event) }),
   updateEvent: (event: Pick<EventDetail, 'id' | 'title' | 'eventDate' | 'academicYear' | 'description' | 'imageDataUrl' | 'registrationEnabled' | 'registrationDeadline' | 'registrationCapacity' | 'maxAttendeesPerFamily' | 'registrationMessage'>) =>
     request<{ ok:boolean }>(`/api/events/${event.id}`, { method:'PUT', body:JSON.stringify(event) }),
+  setEventRegistrationEnabled: (id:string, enabled:boolean) =>
+    request<{ ok:boolean; registrationEnabled:boolean; registrationDeadline?:string|null; deadlineCleared:boolean }>(
+      `/api/events/${id}/registration`,
+      { method:'PATCH', body:JSON.stringify({enabled}) }
+    ),
+
   deleteEvent: (id:string) =>
     request<{ ok:boolean }>(`/api/events/${id}`, { method:'DELETE' }),
   saveEventAttendance: (id:string, families:EventAttendanceFamily[]) =>
