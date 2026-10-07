@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, ChevronLeft, FileDown, ImagePlus, Pencil, Plus, Save, Search, Trash2,
-  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck
+  UserRound, Users, Baby, X, BarChart3, Percent, Table2, Rows3, LayoutGrid, Link2, Copy, ExternalLink, ClipboardCheck, Clock3, TicketCheck
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventSummary, Family, SystemSettings } from '../types/family';
