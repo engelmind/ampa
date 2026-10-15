@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Family } from '../types/family';
-import { calculateStudentCourse } from '../utils/academicCourse';
+import { FamilyMembersGrid } from './FamilyMembersGrid';
 
 interface Props {
   families: Family[];
@@ -24,42 +24,34 @@ export function CompactFamilyList({families,academicYear,onSelect,pageSize=100}:
   return <div className="space-y-3">
     <div className="overflow-x-auto rounded-[24px] border border-white/70 bg-white/90 shadow-[0_14px_34px_rgba(71,85,105,.07)]">
       <div className="min-w-[1160px]">
-        <div className="grid grid-cols-[92px_185px_190px_135px_52px_1fr_68px] items-center gap-2 border-b border-slate-100 bg-slate-50/85 px-4 py-2 text-[8px] font-black uppercase tracking-[.13em] text-slate-400">
+        <div className="grid grid-cols-[92px_180px_1fr_72px] items-center gap-3 border-b border-slate-100 bg-slate-50/85 px-4 py-2 text-[8px] font-black uppercase tracking-[.13em] text-slate-400">
           <span>Socio</span>
           <span>Familia</span>
-          <span>Contacto</span>
-          <span>Teléfono / email</span>
-          <span className="text-center">Hijos</span>
-          <span>Alumnos</span>
+          <span>Unidad familiar · adultos primero, hijos después</span>
           <span>Estado</span>
         </div>
         <div className="divide-y divide-slate-100">
-          {visible.map((family)=>{
-            const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
-            const students=family.students.map((student)=>{
-              const course=calculateStudentCourse(student,academicYear).fullDisplay;
-              return `${student.firstName} ${student.lastName} · ${course}`;
-            }).join('   ·   ');
-            return <button
+          {visible.map((family)=>(
+            <button
               key={family.id}
               type="button"
               onClick={()=>onSelect(family)}
-              className="group grid min-h-[32px] w-full grid-cols-[92px_185px_190px_135px_52px_1fr_68px] items-center gap-2 px-4 py-1.5 text-left text-[10px] leading-none transition hover:bg-indigo-50/45"
+              className="group grid w-full grid-cols-[92px_180px_1fr_72px] items-start gap-3 px-4 py-2 text-left text-[10px] transition hover:bg-indigo-50/45"
             >
-              <span className="flex min-w-0 items-center gap-1.5 font-mono font-bold text-slate-500">
+              <span className="flex min-w-0 items-center gap-1.5 pt-2 font-mono font-bold text-slate-500">
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${family.isActiveThisYear?'bg-emerald-500':'bg-amber-500'}`}/>
                 <span className="truncate">{family.membershipNumber}</span>
               </span>
-              <span className="truncate font-extrabold text-slate-800">{family.familyName}</span>
-              <span className="truncate text-slate-600">{main?.fullName || 'Sin contacto'}</span>
-              <span className="truncate text-slate-500">{main?.phone || main?.email || '—'}</span>
-              <span className="text-center text-[11px] font-black text-slate-700">{family.students.length}</span>
-              <span className="truncate text-slate-600" title={students || 'Sin alumnos'}>{students || 'Sin alumnos'}</span>
-              <span className={`truncate text-[8px] font-black uppercase ${family.isActiveThisYear?'text-emerald-700':'text-amber-700'}`}>
+              <span className="min-w-0 pt-1.5">
+                <span className="block truncate font-extrabold text-slate-800">{family.familyName}</span>
+                <span className="mt-1 block text-[8px] font-bold text-slate-400">{family.guardians.length} adulto{family.guardians.length===1?'':'s'} · {family.students.length} hijo{family.students.length===1?'':'s'}</span>
+              </span>
+              <FamilyMembersGrid family={family} academicYear={academicYear} variant="list"/>
+              <span className={`pt-2 text-[8px] font-black uppercase ${family.isActiveThisYear?'text-emerald-700':'text-amber-700'}`}>
                 {family.isActiveThisYear?'Activa':'Inactiva'}
               </span>
-            </button>;
-          })}
+            </button>
+          ))}
           {!visible.length&&<div className="p-10 text-center text-sm text-slate-400">No hay familias que coincidan con los filtros.</div>}
         </div>
       </div>
