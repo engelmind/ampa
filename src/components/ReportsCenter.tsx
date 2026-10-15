@@ -22,9 +22,9 @@ type ReportDefinition = {
 };
 
 const REPORTS:ReportDefinition[]=[
-  {kind:'family-census',title:'Censo detallado',description:'Una fila por familia con contacto principal, alumnos, curso y estado.',icon:Users,category:'Familias'},
-  {kind:'compact-family-list',title:'Lista compacta',description:'Una sola línea por familia. Pensada para revisar grandes censos con rapidez.',icon:Rows3,category:'Familias'},
-  {kind:'compact-family-cards',title:'Fichas familiares compactas',description:'8 unidades familiares por A4, con contacto, alumnos y dirección.',icon:LayoutGrid,category:'Familias'},
+  {kind:'family-census',title:'Censo detallado',description:'Una fila por familia con toda la unidad familiar: adultos primero, hijos después, además de curso y estado.',icon:Users,category:'Familias'},
+  {kind:'compact-family-list',title:'Lista compacta',description:'Una fila por familia con todos sus componentes, ordenados con adultos primero e hijos después.',icon:Rows3,category:'Familias'},
+  {kind:'compact-family-cards',title:'Fichas familiares compactas',description:'8 unidades familiares por A4, mostrando todos los adultos y todos los hijos dentro de cada familia.',icon:LayoutGrid,category:'Familias'},
   {kind:'guardians',title:'Tutores y contactos',description:'Padres, madres y tutores con teléfono, email y relación familiar.',icon:ContactRound,category:'Familias'},
   {kind:'students-by-course',title:'Alumnado por curso',description:'Alumnos ordenados por curso, familia, nacimiento y grupo.',icon:GraduationCap,category:'Alumnado'},
   {kind:'incomplete',title:'Fichas incompletas',description:'Sólo familias con datos que conviene completar o revisar.',icon:AlertTriangle,category:'Control'},
