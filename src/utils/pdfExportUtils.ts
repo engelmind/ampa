@@ -38,6 +38,22 @@ const studentCourseLabel = (student:any, academicYear:string) =>
     ? calculateStudentCourse(student,academicYear).fullDisplay
     : 'Sin curso asignado';
 
+const guardianRelationLabel=(value:string)=>{
+  if(value==='madre') return 'Madre';
+  if(value==='padre') return 'Padre';
+  if(value==='tutor_legal') return 'Tutor/a legal';
+  return 'Adulto/a';
+};
+
+const familyMembersLines=(family:Family,academicYear:string,includeContact=false)=>{
+  const adults=family.guardians.map((g)=>{
+    const contact=includeContact ? [g.phone,g.email].filter(Boolean).join(' · ') : '';
+    return `${guardianRelationLabel(g.relationship)}: ${g.fullName || 'Sin nombre'}${contact ? ' · '+contact : ''}`;
+  });
+  const children=family.students.map((s)=>`Hijo/a: ${s.firstName} ${s.lastName} · ${studentCourseLabel(s,academicYear)}`);
+  return [...adults,...children];
+};
+
 const artifact = (doc: jsPDF, filename: string, title: string, description?: string): PdfArtifact => ({
   blob: doc.output('blob'),
   filename,
@@ -125,22 +141,17 @@ function tableArtifact(
 }
 
 export function createFamiliesPdfArtifact(families:Family[],options:PdfReportOptions):PdfArtifact{
-  const rows=families.map((fam)=>{
-    const main=fam.guardians.find((g)=>g.isMainContact)||fam.guardians[0];
-    const students=fam.students.map((s)=>`${s.firstName} ${s.lastName} · ${studentCourseLabel(s,options.academicYear)}`).join('\n');
-    return [
-      fam.membershipNumber,
-      `Familia ${fam.familyName}`,
-      main ? `${main.fullName}\n${[main.phone,main.email].filter(Boolean).join(' · ')}` : 'Sin contacto',
-      students || 'Sin alumnos',
-      fam.isActiveThisYear ? 'ACTIVA':'INACTIVA',
-    ];
-  });
+  const rows=families.map((fam)=>[
+    fam.membershipNumber,
+    `Familia ${fam.familyName}`,
+    familyMembersLines(fam,options.academicYear,true).join('\n') || 'Sin componentes registrados',
+    fam.isActiveThisYear ? 'ACTIVA':'INACTIVA',
+  ]);
   return tableArtifact(
     options.title || 'Censo de familias',
     `censo_familias_${options.academicYear.replace('/','-')}.pdf`,
-    ['Nº SOCIO','FAMILIA','CONTACTO PRINCIPAL','ALUMNOS / CURSO','ESTADO'],
-    rows,options,{0:{cellWidth:22,fontStyle:'bold'},1:{cellWidth:42,fontStyle:'bold'},2:{cellWidth:72},3:{cellWidth:'auto'},4:{cellWidth:24,halign:'center'}},
+    ['Nº SOCIO','FAMILIA','UNIDAD FAMILIAR · ADULTOS → HIJOS','ESTADO'],
+    rows,options,{0:{cellWidth:24,fontStyle:'bold'},1:{cellWidth:48,fontStyle:'bold'},2:{cellWidth:'auto'},3:{cellWidth:27,halign:'center'}},
     options.filterLabel || `${families.length} familias`
   );
 }
@@ -184,6 +195,8 @@ export function createEventParticipantsPdfArtifact(event:EventDetail,families:Fa
     })
     .sort((a,b)=>
       a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'})
+      || (a.role==='Madre'||a.role==='Padre'||a.role==='Tutor/a legal'||a.role==='Adulto/a' ? 0 : 1)
+        - (b.role==='Madre'||b.role==='Padre'||b.role==='Tutor/a legal'||b.role==='Adulto/a' ? 0 : 1)
       || a.participantName.localeCompare(b.participantName,'es',{sensitivity:'base'})
     )
     .map((row,index)=>[
@@ -301,9 +314,9 @@ function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):
     if(index>0&&slot===0) doc.addPage();
     const col=slot%2,row=Math.floor(slot/2);
     const x=margin+col*(cardW+gapX), y=margin+row*(cardH+gapY);
-    const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
     const issues=getFamilyDataIssues(family);
-    const students=family.students.slice(0,4).map((s)=>`${s.firstName} ${s.lastName} · ${studentCourseLabel(s,settings.activeAcademicYear)}`);
+    const memberLines=familyMembersLines(family,settings.activeAcademicYear,false);
+    const dense=memberLines.length>6;
 
     doc.setDrawColor(226,232,240); doc.setFillColor(255,255,255); doc.roundedRect(x,y,cardW,cardH,2,2,'FD');
     doc.setFillColor(family.isActiveThisYear?16:245,family.isActiveThisYear?185:158,family.isActiveThisYear?129:11);
@@ -312,21 +325,30 @@ function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):
     doc.text(`Familia ${family.familyName}`,x+4,y+11,{maxWidth:cardW-30});
     doc.setFontSize(6.2); doc.setTextColor(100,116,139); doc.text(family.membershipNumber,x+cardW-4,y+11,{align:'right'});
 
-    doc.setFont('helvetica','normal'); doc.setFontSize(5.8); doc.setTextColor(51,65,85);
     let cy=y+16;
-    if(main){
-      doc.setFont('helvetica','bold'); doc.text(main.fullName,x+4,cy,{maxWidth:cardW-8}); cy+=3.3;
-      doc.setFont('helvetica','normal'); doc.text([main.phone,main.email].filter(Boolean).join(' · ')||'Sin teléfono/email',x+4,cy,{maxWidth:cardW-8}); cy+=4;
+    doc.setFont('helvetica','bold'); doc.setFontSize(5.3); doc.setTextColor(100,116,139);
+    doc.text('UNIDAD FAMILIAR',x+4,cy); cy+=3.2;
+    doc.setFont('helvetica','normal'); doc.setFontSize(dense?4.7:5.2); doc.setTextColor(51,65,85);
+    memberLines.forEach((line)=>{
+      const wrapped=doc.splitTextToSize(line,cardW-8);
+      doc.text(wrapped,x+4,cy);
+      cy+=Math.max(2.6,wrapped.length*(dense?2.45:2.7));
+    });
+    if(!memberLines.length){doc.text('Sin componentes registrados',x+4,cy);cy+=3;}
+
+    const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
+    if(main && cy<y+cardH-15){
+      const contact=[main.phone,main.email].filter(Boolean).join(' · ');
+      if(contact){
+        doc.setTextColor(100,116,139);doc.setFontSize(4.8);
+        doc.text(`Contacto: ${contact}`,x+4,Math.min(cy+1,y+cardH-12),{maxWidth:cardW-8});
+      }
     }
-    doc.setFont('helvetica','bold'); doc.text('ALUMNOS',x+4,cy); cy+=3.2;
-    doc.setFont('helvetica','normal');
-    students.forEach((line)=>{doc.text(line,x+4,cy,{maxWidth:cardW-8}); cy+=3.3;});
-    if(family.students.length>4){doc.text(`+${family.students.length-4} alumno(s)`,x+4,cy);cy+=3.3;}
 
     const address=[family.address.street,[family.address.postalCode,family.address.city].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
-    if(address){doc.setTextColor(100,116,139);doc.text(address,x+4,y+cardH-7,{maxWidth:cardW-8});}
+    if(address){doc.setTextColor(100,116,139);doc.setFontSize(4.8);doc.text(address,x+4,y+cardH-7,{maxWidth:cardW-8});}
     if(issues.length){
-      doc.setTextColor(180,83,9);doc.setFont('helvetica','bold');doc.text(`${issues.length} dato(s) por revisar`,x+cardW-4,y+cardH-3,{align:'right'});
+      doc.setTextColor(180,83,9);doc.setFont('helvetica','bold');doc.setFontSize(4.8);doc.text(`${issues.length} dato(s) por revisar`,x+cardW-4,y+cardH-3,{align:'right'});
     }
   });
 
@@ -337,38 +359,28 @@ function createCompactFamilyCardsPdf(families:Family[],settings:SystemSettings):
 function createCompactFamilyListPdf(families:Family[],settings:SystemSettings):PdfArtifact{
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
   const opts:PdfReportOptions={academicYear:settings.activeAcademicYear,schoolName:settings.schoolName,associationName:settings.associationName};
-  drawReportHeader(doc,opts,'Lista compacta de familias',`${families.length} familias · una línea por familia`);
+  drawReportHeader(doc,opts,'Lista compacta de familias',`${families.length} familias · una fila por familia`);
 
-  const rows=families.map((family)=>{
-    const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
-    const studentNames=family.students.map((s)=>`${s.firstName} ${s.lastName}`).join(' · ');
-    return [
-      family.membershipNumber,
-      family.familyName,
-      main?.fullName || 'Sin contacto',
-      main?.phone || '',
-      main?.email || '',
-      studentNames || 'Sin alumnos',
-      family.isActiveThisYear ? 'ACTIVA' : 'INACTIVA',
-    ];
-  });
+  const rows=families.map((family)=>[
+    family.membershipNumber,
+    family.familyName,
+    familyMembersLines(family,settings.activeAcademicYear,true).join('  ·  ') || 'Sin componentes registrados',
+    family.isActiveThisYear ? 'ACTIVA' : 'INACTIVA',
+  ]);
 
   autoTable(doc,{
     startY:39,
-    head:[['SOCIO','FAMILIA','CONTACTO','TELÉFONO','EMAIL','ALUMNOS','ESTADO']],
+    head:[['SOCIO','FAMILIA','UNIDAD FAMILIAR · ADULTOS → HIJOS','ESTADO']],
     body:rows,
     theme:'plain',
     headStyles:{fillColor:[30,41,59],textColor:[255,255,255],fontStyle:'bold',fontSize:6.2,cellPadding:1.4},
-    bodyStyles:{fontSize:5.7,cellPadding:1.15,textColor:[30,41,59],valign:'middle',lineColor:[226,232,240],lineWidth:{bottom:.1}},
+    bodyStyles:{fontSize:5.5,cellPadding:1.15,textColor:[30,41,59],valign:'middle',lineColor:[226,232,240],lineWidth:{bottom:.1}},
     alternateRowStyles:{fillColor:[248,250,252]},
     columnStyles:{
-      0:{cellWidth:22,fontStyle:'bold'},
-      1:{cellWidth:42,fontStyle:'bold'},
-      2:{cellWidth:44},
-      3:{cellWidth:28},
-      4:{cellWidth:62},
-      5:{cellWidth:'auto'},
-      6:{cellWidth:23,halign:'center',fontStyle:'bold'},
+      0:{cellWidth:23,fontStyle:'bold'},
+      1:{cellWidth:45,fontStyle:'bold'},
+      2:{cellWidth:'auto'},
+      3:{cellWidth:24,halign:'center',fontStyle:'bold'},
     },
     margin:{left:8,right:8,bottom:11},
   });
