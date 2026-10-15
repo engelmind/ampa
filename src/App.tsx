@@ -21,7 +21,6 @@ import { ReportsCenter } from './components/ReportsCenter';
 import { PdfPreviewModal } from './components/PdfPreviewModal';
 import { CompactFamilyGrid } from './components/CompactFamilyGrid';
 import { CompactFamilyList } from './components/CompactFamilyList';
-import { FamilyMembersGrid } from './components/FamilyMembersGrid';
 import { EventsModule } from './components/EventsModule';
 import { PublicEventRegistration } from './components/PublicEventRegistration';
 
@@ -789,26 +788,18 @@ export default function App() {
                 <CompactFamilyList families={filtered} academicYear={settings.activeAcademicYear} onSelect={setSelected} pageSize={80}/>
               ) : (
                 <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
-                  <div className="hidden grid-cols-[105px_190px_1fr_105px_32px] gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-3 text-[9px] font-black uppercase tracking-[.14em] text-slate-400 md:grid">
-                    <span>Socio</span>
-                    <span>Familia</span>
-                    <span>Unidad familiar · adultos primero, hijos después</span>
-                    <span>Estado</span>
-                    <span/>
-                  </div>
+                  <div className="hidden grid-cols-[110px_1.3fr_1fr_120px_40px] gap-3 border-b border-slate-100 bg-slate-50/80 px-5 py-3 text-[9px] font-black uppercase tracking-[.14em] text-slate-400 md:grid"><span>Socio</span><span>Familia</span><span>Contacto</span><span>Estado</span><span/></div>
                   <div className="divide-y divide-slate-100">
-                    {filtered.map((family)=>(
-                      <button key={family.id} type="button" onClick={()=>setSelected(family)} className="group grid w-full gap-3 px-5 py-3 text-left transition hover:bg-indigo-50/40 md:grid-cols-[105px_190px_1fr_105px_32px] md:items-start">
-                        <span className="pt-2 font-mono text-[11px] font-bold text-slate-400">{family.membershipNumber}</span>
-                        <span className="min-w-0 pt-1.5">
-                          <span className="block truncate text-sm font-black text-slate-800">Familia {family.familyName}</span>
-                          <span className="mt-1 block text-[9px] font-semibold text-slate-400">{family.guardians.length} adulto{family.guardians.length===1?'':'s'} · {family.students.length} hijo{family.students.length===1?'':'s'}</span>
-                        </span>
-                        <FamilyMembersGrid family={family} academicYear={settings.activeAcademicYear} variant="table"/>
-                        <span className={`mt-1 w-fit rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
-                        <ChevronRight size={16} className="mt-2 hidden text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-400 md:block"/>
-                      </button>
-                    ))}
+                    {filtered.map((family)=>{
+                      const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
+                      return <button key={family.id} type="button" onClick={()=>setSelected(family)} className="group grid w-full gap-2 px-5 py-4 text-left transition hover:bg-indigo-50/40 md:grid-cols-[110px_1.3fr_1fr_120px_40px] md:items-center md:gap-3">
+                        <span className="font-mono text-[11px] font-bold text-slate-400">{family.membershipNumber}</span>
+                        <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-800">Familia {family.familyName}</span><span className="mt-0.5 block text-[10px] font-semibold text-slate-400">{family.students.length} alumno{family.students.length===1?'':'s'}</span></span>
+                        <span className="min-w-0 text-xs font-semibold text-slate-500"><span className="block truncate">{main?.fullName||'Sin contacto'}</span><span className="block truncate text-[10px] font-normal text-slate-400">{main?.phone||main?.email||'—'}</span></span>
+                        <span className={`w-fit rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
+                        <ChevronRight size={16} className="hidden text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-400 md:block"/>
+                      </button>;
+                    })}
                     {!filtered.length&&<div className="p-12 text-center text-sm text-slate-400">No hay familias que coincidan con los filtros.</div>}
                   </div>
                 </div>
