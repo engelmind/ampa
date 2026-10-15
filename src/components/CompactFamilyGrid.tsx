@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Mail, Phone } from 'lucide-react';
 import { Family } from '../types/family';
-import { calculateStudentCourse } from '../utils/academicCourse';
 import { getFamilyDataIssues } from '../utils/dataQuality';
+import { FamilyMembersGrid } from './FamilyMembersGrid';
 
 interface Props {
   families: Family[];
@@ -10,13 +10,6 @@ interface Props {
   onSelect: (family: Family) => void;
   pageSize?: number;
 }
-
-const relationshipShort=(value:string)=>{
-  if(value==='madre') return 'Madre';
-  if(value==='padre') return 'Padre';
-  if(value==='tutor_legal') return 'Tutor';
-  return 'Otro';
-};
 
 export function CompactFamilyGrid({families,academicYear,onSelect,pageSize=40}:Props){
   const [page,setPage]=useState(1);
@@ -33,9 +26,6 @@ export function CompactFamilyGrid({families,academicYear,onSelect,pageSize=40}:P
       {visible.map((family)=>{
         const main=family.guardians.find((g)=>g.isMainContact)||family.guardians[0];
         const issues=getFamilyDataIssues(family);
-        const adults=family.guardians
-          .map((g)=>`${g.fullName} (${relationshipShort(g.relationship)})`)
-          .join(' · ');
         return <button key={family.id} onClick={()=>onSelect(family)} className="group min-w-0 rounded-[22px] border border-white/70 bg-white/90 p-3 text-left shadow-[0_14px_36px_rgba(71,85,105,.07)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(71,85,105,.11)]">
           <div className="flex items-start gap-2">
             <div className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${family.isActiveThisYear?'bg-gradient-to-br from-emerald-400 to-cyan-400':'bg-gradient-to-br from-amber-400 to-orange-400'}`}/>
@@ -55,20 +45,9 @@ export function CompactFamilyGrid({families,academicYear,onSelect,pageSize=40}:P
             </div>
           </div>
 
-          <div className="mt-2.5 min-w-0 rounded-xl bg-slate-50/75 px-2.5 py-2">
-            <div className="truncate text-[9px] text-slate-500" title={adults || 'Sin adultos registrados'}>
-              <span className="font-black uppercase tracking-wide text-slate-400">Adultos:</span>{' '}
-              {adults || 'Sin adultos registrados'}
-            </div>
-          </div>
-
-          <div className="mt-2 space-y-1 rounded-2xl bg-slate-50/80 p-2.5">
-            {family.students.slice(0,3).map((student)=><div key={student.id} className="flex items-center justify-between gap-2 text-[9px]">
-              <span className="truncate font-semibold text-slate-700">{student.firstName} {student.lastName}</span>
-              <span className="shrink-0 font-semibold text-rose-600">{calculateStudentCourse(student,academicYear).fullDisplay}</span>
-            </div>)}
-            {family.students.length>3&&<div className="text-[8px] font-bold text-slate-400">+{family.students.length-3} alumno(s)</div>}
-            {!family.students.length&&<div className="text-[9px] text-slate-400">Sin alumnos registrados</div>}
+          <div className="mt-2.5 rounded-2xl bg-slate-50/70 p-2">
+            <div className="mb-1.5 text-[8px] font-black uppercase tracking-[.14em] text-slate-400">Unidad familiar</div>
+            <FamilyMembersGrid family={family} academicYear={academicYear} variant="card"/>
           </div>
 
           <div className="mt-2 flex min-w-0 items-center gap-2 border-t border-slate-100 pt-2.5 text-[8px] text-slate-400">
