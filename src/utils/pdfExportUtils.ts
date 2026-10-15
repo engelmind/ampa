@@ -168,8 +168,7 @@ const safeFilenamePart=(value:string)=>value
   .slice(0,70) || 'evento';
 
 export function createEventParticipantsPdfArtifact(event:EventDetail,families:Family[],settings:SystemSettings):PdfArtifact{
-  const attendingFamilies=new Set(event.familyIds);
-  const rows=event.attendees
+  const participantRows=event.attendees
     .map((attendee)=>{
       const family=families.find((f)=>f.id===attendee.familyId);
       const guardian=attendee.personType==='guardian'
@@ -187,26 +186,19 @@ export function createEventParticipantsPdfArtifact(event:EventDetail,families:Fa
           ? studentCourseLabel(student,settings.activeAcademicYear)
           : attendee.personType==='guardian' ? 'Adulto/a' : 'Hijo/a';
       return {
+        familyId:attendee.familyId,
         familyName:family?.familyName || 'Familia no disponible',
         membershipNumber:family?.membershipNumber || '',
         participantName:attendee.participantName,
+        personType:attendee.personType,
         role,
       };
     })
     .sort((a,b)=>
       a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'})
-      || (a.role==='Madre'||a.role==='Padre'||a.role==='Tutor/a legal'||a.role==='Adulto/a' ? 0 : 1)
-        - (b.role==='Madre'||b.role==='Padre'||b.role==='Tutor/a legal'||b.role==='Adulto/a' ? 0 : 1)
+      || (a.personType==='guardian'?0:1)-(b.personType==='guardian'?0:1)
       || a.participantName.localeCompare(b.participantName,'es',{sensitivity:'base'})
-    )
-    .map((row,index)=>[
-      index+1,
-      '________',
-      row.membershipNumber,
-      row.familyName,
-      row.participantName,
-      row.role,
-    ]);
+    );
 
   const opts:PdfReportOptions={
     academicYear:settings.activeAcademicYear,
@@ -216,27 +208,60 @@ export function createEventParticipantsPdfArtifact(event:EventDetail,families:Fa
   const date=event.eventDate
     ? new Date(event.eventDate+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'})
     : 'Sin fecha';
-  const familyCount=Array.from(attendingFamilies).length;
+  const familyCount=new Set(participantRows.map((row)=>row.familyId)).size;
   const title=`Participantes - ${event.title}`;
-  return tableArtifact(
-    title,
-    `participantes_${safeFilenamePart(event.title)}_${event.eventDate || 'sin_fecha'}.pdf`,
-    ['Nº','CONTROL','SOCIO','FAMILIA','PARTICIPANTE','TIPO / CURSO'],
-    rows,
+
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  drawReportHeader(
+    doc,
     opts,
-    {
+    title,
+    `${date} · Curso ${event.academicYear} · ${familyCount} familias · ${participantRows.length} participantes`
+  );
+
+  let lastFamilyId='';
+  const body=participantRows.map((row,index)=>{
+    const firstOfFamily=row.familyId!==lastFamilyId;
+    lastFamilyId=row.familyId;
+    const fill=row.personType==='guardian' ? [249,250,252] : [255,251,252];
+    const accent=row.personType==='guardian' ? [99,102,241] : [225,29,72];
+    const baseStyles={fillColor:fill,textColor:[51,65,85]} as any;
+    return [
+      {content:String(index+1),styles:{...baseStyles,halign:'center'}},
+      {content:'________',styles:{...baseStyles,halign:'center',textColor:[148,163,184]}},
+      {content:firstOfFamily?row.membershipNumber:'',styles:{...baseStyles,fontStyle:firstOfFamily?'bold':'normal'}},
+      {content:firstOfFamily?row.familyName:'',styles:{...baseStyles,fontStyle:firstOfFamily?'bold':'normal'}},
+      {content:row.participantName,styles:{...baseStyles,fontStyle:'bold'}},
+      {content:row.role,styles:{...baseStyles,textColor:accent}},
+    ];
+  });
+
+  autoTable(doc,{
+    startY:39,
+    head:[['Nº','CONTROL','SOCIO','FAMILIA','PARTICIPANTE','RELACIÓN / CURSO']],
+    body:body as any,
+    theme:'grid',
+    headStyles:{fillColor:[30,41,59],textColor:[255,255,255],fontStyle:'bold',fontSize:7.5,cellPadding:2.3},
+    bodyStyles:{fontSize:7.2,cellPadding:2.1,valign:'middle',lineColor:[226,232,240],lineWidth:.12},
+    columnStyles:{
       0:{cellWidth:12,halign:'center'},
       1:{cellWidth:24,halign:'center'},
-      2:{cellWidth:23,fontStyle:'bold'},
-      3:{cellWidth:52,fontStyle:'bold'},
+      2:{cellWidth:23},
+      3:{cellWidth:52},
       4:{cellWidth:72},
       5:{cellWidth:'auto'},
     },
-    `${date} · Curso ${event.academicYear} · ${familyCount} familias · ${rows.length} participantes`,
-    'landscape'
+    margin:{left:10,right:10,bottom:12},
+  });
+
+  addFooter(doc,title);
+  return artifact(
+    doc,
+    `participantes_${safeFilenamePart(event.title)}_${event.eventDate || 'sin_fecha'}.pdf`,
+    title,
+    `${familyCount} familias · ${participantRows.length} participantes · adultos antes que hijos`
   );
 }
-
 
 async function buildMembershipCardDoc(
   family: Family,
