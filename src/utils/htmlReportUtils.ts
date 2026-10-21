@@ -194,6 +194,7 @@ const documentHtml = (settings: PrintReportOptions, layout: Layout, body: string
   return [
     '<!doctype html><html lang="es"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<base href="', escapeHtml(typeof window !== 'undefined' ? window.location.origin + '/' : '/'), '">',
     '<title>', escapeHtml(title), '</title><style>', stylesheet(!!layout.landscape), '</style></head><body>',
     '<div class="document"><div class="topline"></div>',
     '<header class="brand"><img src="/logo-ampa-corporate.webp" alt="Logotipo AMPA Agustinos Granada">',
