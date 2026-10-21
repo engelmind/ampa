@@ -50,7 +50,7 @@ export function PdfPreviewModal({ artifact, onClose, onEmail, emailLabel = 'Envi
           <button type="button" onClick={onClose} className="rounded-xl p-2 hover:bg-slate-100" aria-label="Cerrar previsualización"><X size={19}/></button>
         </div>
         {artifact.html && <div className="border-b border-slate-200 bg-amber-50 px-4 py-2 text-[11px] text-amber-900">
-          Documento maquetado en HTML. En el diálogo de impresión, seleccione «Guardar como PDF», formato A4, escala 100 % y gráficos de fondo activados.
+          Documento maquetado en HTML. En el diálogo de impresión, seleccione «Guardar como PDF», formato A4, escala 100 % y gráficos de fondo activados y encabezados/pies del navegador desactivados.
         </div>}
         <div className="min-h-0 flex-1 bg-slate-100 p-2 sm:p-4">
           {artifact.html ? (
