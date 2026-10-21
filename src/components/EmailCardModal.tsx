@@ -49,7 +49,7 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
   },[]);
 
   const send = async () => {
-    if(!guardianId) return;
+    if(!guardianId || !artifact.blob) return;
     setBusy(true); setError('');
     try {
       const pdfBase64=await blobToBase64(artifact.blob);
@@ -94,7 +94,7 @@ export function EmailCardModal({ family, artifact, academicYear, onClose, onSent
               </label>
               <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Asunto</span><input value={subject} onChange={(e)=>setSubject(e.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"/></label>
               <label className="block space-y-1.5"><span className="text-xs font-bold text-slate-600">Mensaje</span><textarea rows={6} value={message} onChange={(e)=>setMessage(e.target.value)} className="w-full rounded-xl border border-slate-200 p-3 text-sm leading-6"/></label>
-              <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500"><Mail size={15}/><span className="truncate">{artifact.filename}</span><span className="ml-auto shrink-0">{Math.max(1,Math.round(artifact.blob.size/1024))} KB</span></div>
+              <div className="flex items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500"><Mail size={15}/><span className="truncate">{artifact.filename}</span><span className="ml-auto shrink-0">{Math.max(1,Math.round((artifact.blob?.size || 0)/1024))} KB</span></div>
               {mailReady && sender && <div className="text-[11px] text-slate-400">Remitente: {sender}</div>}
               {error&&<div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{error}</div>}
             </>

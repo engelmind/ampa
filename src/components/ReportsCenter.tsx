@@ -24,7 +24,7 @@ type ReportDefinition = {
 const REPORTS:ReportDefinition[]=[
   {kind:'family-census',title:'Censo detallado',description:'Una fila por familia con toda la unidad familiar: adultos primero, hijos después, además de curso y estado.',icon:Users,category:'Familias'},
   {kind:'compact-family-list',title:'Lista compacta',description:'Una fila por familia con todos sus componentes, ordenados con adultos primero e hijos después.',icon:Rows3,category:'Familias'},
-  {kind:'compact-family-cards',title:'Fichas familiares compactas',description:'8 unidades familiares por A4, mostrando todos los adultos y todos los hijos dentro de cada familia.',icon:LayoutGrid,category:'Familias'},
+  {kind:'compact-family-cards',title:'Fichas familiares compactas',description:'Fichas en dos columnas con adultos e hijos; distribución según el contenido y los saltos de página.',icon:LayoutGrid,category:'Familias'},
   {kind:'guardians',title:'Tutores y contactos',description:'Padres, madres y tutores con teléfono, email y relación familiar.',icon:ContactRound,category:'Familias'},
   {kind:'students-by-course',title:'Alumnado por curso',description:'Alumnos ordenados por curso, familia, nacimiento y grupo.',icon:GraduationCap,category:'Alumnado'},
   {kind:'incomplete',title:'Fichas incompletas',description:'Sólo familias con datos que conviene completar o revisar.',icon:AlertTriangle,category:'Control'},
@@ -57,7 +57,7 @@ export function ReportsCenter({allFamilies,filteredFamilies,settings,role,onPrev
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Documentación</div>
           <h2 className="text-lg font-black">Centro de informes PDF</h2>
-          <p className="mt-1 text-xs text-slate-500">Cada informe tiene una función distinta. Todos se previsualizan antes de descargar.</p>
+          <p className="mt-1 text-xs text-slate-500">Cada informe dispone de una plantilla HTML propia y puede previsualizarse antes de imprimir o guardar en PDF.</p>
         </div>
         <div className="flex rounded-xl bg-slate-100 p-1">
           <button onClick={()=>setScope('filtered')} className={`min-h-9 rounded-lg px-3 text-xs font-bold ${scope==='filtered'?'bg-white shadow-sm':'text-slate-500'}`}>Filtro actual · {filteredFamilies.length}</button>

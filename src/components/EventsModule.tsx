@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventRegistrationRecord, EventSummary, Family, SystemSettings } from '../types/family';
-import { createEventParticipantsPdfArtifact, downloadPdfArtifact } from '../utils/pdfExportUtils';
+import { createEventParticipantsPdfArtifact, PdfArtifact } from '../utils/pdfExportUtils';
+import { PdfPreviewModal } from './PdfPreviewModal';
 import QRCode from 'qrcode';
 
 interface Props {
@@ -99,6 +100,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   const [eventView,setEventView]=useState<EventViewMode>('cards');
   const [registrationQrPng,setRegistrationQrPng]=useState('');
   const [registrationQrSvg,setRegistrationQrSvg]=useState('');
+  const [printPreview,setPrintPreview]=useState<PdfArtifact|null>(null);
 
   const academicYears=useMemo(()=>Array.from(new Set([
     settings.activeAcademicYear,
@@ -295,7 +297,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       onNotify('info','Sin participantes','Guarde al menos un participante antes de generar la lista.');
       return;
     }
-    downloadPdfArtifact(createEventParticipantsPdfArtifact(detail,families,settings));
+    setPrintPreview(createEventParticipantsPdfArtifact(detail,families,settings));
   };
 
   const toggleRegistrationState=async()=>{
@@ -619,7 +621,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               <p className="mt-1 text-xs leading-5 text-slate-500">Vista operativa del evento: solo aparecen las familias que participan y sus miembros asistentes.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              {!!detail.attendees.length&&<button type="button" onClick={downloadParticipantsPdf} className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 shadow-sm"><FileDown size={15}/> Lista PDF</button>}
+              {!!detail.attendees.length&&<button type="button" onClick={downloadParticipantsPdf} className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 shadow-sm"><FileDown size={15}/> Informe de participantes</button>}
               {canEdit&&<button type="button" onClick={()=>setEditingAttendance(true)} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white"><Pencil size={15}/> Editar participación</button>}
             </div>
           </div>
@@ -723,6 +725,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       )}
 
       {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
+      {printPreview&&<PdfPreviewModal artifact={printPreview} onClose={()=>setPrintPreview(null)}/>}
     </div>;
   }
 
