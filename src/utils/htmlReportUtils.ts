@@ -323,7 +323,7 @@ export function renderReportHtml(kind: HtmlReportKind, families: Family[], setti
           safeText(g.email, 'Sin correo electrónico') + '</div></div>').join('') + '</article>'
       ).join('');
     return documentHtml(options, { title: 'Tutores y contactos', label: 'Directorio de contactos',
-      detail: 'Información para la gestión interna de la asociación', landscape: true
+      detail: 'Información para la gestión interna de la asociación'
     }, body);
   }
   if (kind === 'students-by-course') {
