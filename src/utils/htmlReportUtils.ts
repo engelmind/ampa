@@ -99,8 +99,12 @@ const summary = (items: Array<[string, string | number]>): string =>
   ).join('') + '</div>';
 
 const stylesheet = (landscape: boolean): string => [
-  '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 13mm 11mm 16mm; }',
-  '@page { @bottom-right {content: "Página " counter(page) " de " counter(pages); color:#65748b; font: 8pt Arial,sans-serif;} }',
+  // Los pies se sitúan en las cajas de margen de cada página, no como elementos
+  // position:fixed (que Chromium puede superponer al primer registro siguiente).
+  '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 13mm 11mm 16mm;' +
+  ' @bottom-left {content: "AMPA Agustinos Granada · Documento de uso interno · Información confidencial";' +
+  ' color:#64748b; font: 7pt Arial,sans-serif; border-top:1px solid #cbd5e1; padding-top:1mm; width:150mm; }' +
+  ' @bottom-right {content: "Página " counter(page) " de " counter(pages); color:#65748b; font:8pt Arial,sans-serif;} }',
   '*{box-sizing:border-box}',
   'html{background:#eef2f6}',
   'body{margin:0;font:10pt/1.4 Arial,Helvetica,sans-serif;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
@@ -179,9 +183,7 @@ const stylesheet = (landscape: boolean): string => [
   '.attendee-role{color:#64748b;font-size:7.5pt;text-align:right}',
   '.attendee-row.child-row .attendee-role{color:#a16262}',
   '.blank{padding:6mm;text-align:center;border:1px dashed #cbd5e1;color:#64748b}',
-  '.print-footer{position:fixed;bottom:-11mm;left:0;right:30mm;font-size:7pt;color:#64748b;border-top:1px solid #cbd5e1;padding-top:1.1mm}',
-  '@media print{html,body{background:#fff}.document{box-shadow:none;padding:0;max-width:none;margin:0}.topline{margin:0 0 5mm}.brand{padding-bottom:3mm}.print-footer{display:block}}',
-  '@media screen{.print-footer{display:none}}',
+  '@media print{html,body{background:#fff}.document{box-shadow:none;padding:0;max-width:none;margin:0}.topline{margin:0 0 5mm}.brand{padding-bottom:3mm}}',
   '@media(max-width:660px){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
 ].join('\n');
 
@@ -205,9 +207,7 @@ const documentHtml = (settings: PrintReportOptions, layout: Layout, body: string
     '<h1>', escapeHtml(title), '</h1>',
     '<p class="report-subtitle">', escapeHtml(layout.detail || ''), ' · Emitido el ', escapeHtml(issueDate), '</p>',
     layout.privacy ? '<div class="privacy">' + escapeHtml(layout.privacy) + '</div>' : '',
-    '<main>', body, '</main>',
-    '<footer class="print-footer">', escapeHtml(settings.associationName || 'AMPA Agustinos Granada'),
-    ' · Documento de uso interno · Información confidencial</footer></div></body></html>'
+    '<main>', body, '</main></div></body></html>'
   ].join('');
 };
 
