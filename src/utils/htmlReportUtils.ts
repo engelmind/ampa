@@ -270,10 +270,12 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
       // Sólo se publican los medios de contacto de los adultos que asisten.
       // Los datos se leen de la ficha del adulto y nunca se inventan ni se
       // transfieren automáticamente desde otros miembros de la familia.
-      const contactDetails = a.personType === 'guardian'
+      const phone = a.personType === 'guardian' ? String(guardian?.phone ?? '').trim() : '';
+      const email = a.personType === 'guardian' ? String(guardian?.email ?? '').trim() : '';
+      const contactDetails = phone || email
         ? '<div class="attendee-contacts">' +
-          '<span>Tel.: ' + safeText(guardian?.phone, 'No consta') + '</span>' +
-          '<span>Email: ' + safeText(guardian?.email, 'No consta') + '</span>' +
+          (phone ? '<span>Tel.: ' + escapeHtml(phone) + '</span>' : '') +
+          (email ? '<span>Email: ' + escapeHtml(email) + '</span>' : '') +
           '</div>'
         : '';
       return '<div class="attendee-row ' + (a.personType === 'student' ? 'child-row' : '') + '">' +
