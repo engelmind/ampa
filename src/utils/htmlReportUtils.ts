@@ -178,6 +178,10 @@ const stylesheet = (landscape: boolean): string => [
   '.event-family{padding:2.5mm 3mm;margin:0 0 2mm;border:1px solid #dbe3ec;border-left:2.5mm solid #b91c1c;border-radius:2mm}',
   '.event-family .family-title{margin-bottom:1.5mm}',
   '.attendee-row{display:grid;grid-template-columns:5mm 1fr 40mm;gap:2mm;align-items:start;font-size:8pt;line-height:1.35;padding:.8mm 0}',
+  '.attendee-details{min-width:0;overflow-wrap:anywhere}',
+  '.attendee-name{display:block}',
+  '.attendee-contacts{display:flex;flex-wrap:wrap;column-gap:3mm;row-gap:.35mm;margin-top:.55mm;color:#475569;font-size:7.15pt;line-height:1.25}',
+  '.attendee-contacts span{max-width:100%;overflow-wrap:anywhere}',
   '.attendee-row+.attendee-row{border-top:1px solid #f1f5f9}',
   '.check-square{width:3.2mm;height:3.2mm;border:1px solid #94a3b8;border-radius:.5mm;display:inline-block}',
   '.attendee-role{color:#64748b;font-size:7.5pt;text-align:right}',
@@ -263,8 +267,18 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
       const role = guardian ? guardianLabel(guardian.relationship)
         : student ? studentCourse(student, event.academicYear || settings.activeAcademicYear)
         : a.personType === 'guardian' ? 'Adulto/a' : 'Hijo/a';
+      // Sólo se publican los medios de contacto de los adultos que asisten.
+      // Los datos se leen de la ficha del adulto y nunca se inventan ni se
+      // transfieren automáticamente desde otros miembros de la familia.
+      const contactDetails = a.personType === 'guardian'
+        ? '<div class="attendee-contacts">' +
+          '<span>Tel.: ' + safeText(guardian?.phone, 'No consta') + '</span>' +
+          '<span>Email: ' + safeText(guardian?.email, 'No consta') + '</span>' +
+          '</div>'
+        : '';
       return '<div class="attendee-row ' + (a.personType === 'student' ? 'child-row' : '') + '">' +
-        '<span class="check-square"></span><span>' + safeText(a.participantName) +
+        '<span class="check-square"></span><span class="attendee-details"><span class="attendee-name">' +
+        safeText(a.participantName) + '</span>' + contactDetails +
         '</span><span class="attendee-role">' + escapeHtml(role) + '</span></div>';
     }).join('');
     return '<article class="event-family">' + title + rows + '</article>';
@@ -280,7 +294,7 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
     associationName: settings.associationName
   }, {
     title: 'Participantes · ' + event.title, label: 'Informe de actividad',
-    detail: eventDate + ' · Adultos primero, hijos después'
+    detail: eventDate + ' · Adultos primero, hijos después · Contactos de adultos participantes'
   }, body);
 }
 
