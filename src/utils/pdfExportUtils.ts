@@ -105,17 +105,22 @@ export function createEventParticipantsPdfArtifact(
 }
 
 
-/** Relación de familias inscritas con sus adultos e hijos. No implica asistencia efectiva. */
+/** Lista simple (con contactos y curso) o Check (casillas individuales de asistencia).
+ * Solo figuran las personas efectivamente inscritas en el evento. */
 export function createEventRegistrationsPdfArtifact(
-  event: EventDetail, families: Family[], settings: SystemSettings
+  event: EventDetail, families: Family[], settings: SystemSettings,
+  mode: 'simple' | 'check' = 'simple'
 ): PdfArtifact {
-  const registrations=event.registrations.filter(registration=>registration.status!=='cancelled');
-  const total=registrations.reduce((n,registration)=>n+registration.attendees.length,0);
+  const registrations=event.registrations.filter(registration=>registration.status==='confirmed');
+  const adultCount=registrations.reduce((n,r)=>n+r.attendees.filter(a=>a.personType==='guardian').length,0);
+  const childCount=registrations.reduce((n,r)=>n+r.attendees.filter(a=>a.personType==='student').length,0);
+  const title=mode==='check'?'Lista Check':'Lista simple';
   return htmlArtifact(
-    renderEventRegistrationsHtml(event,families,settings),
-    'inscripciones_' + safeFilenamePart(event.title) + '_' + (event.eventDate || 'sin_fecha') + '.pdf',
-    'Inscripciones · ' + event.title,
-    registrations.length+' familias · '+total+' personas inscritas · Hijos no inscritos visibles como contexto familiar'
+    renderEventRegistrationsHtml(event,families,settings,mode),
+    (mode==='check'?'lista_check_':'lista_simple_')+
+      safeFilenamePart(event.title)+'_'+(event.eventDate||'sin_fecha')+'.pdf',
+    title+' · '+event.title,
+    registrations.length+' familias · '+adultCount+' adultos · '+childCount+' menores · '+(adultCount+childCount)+' inscritos'
   );
 }
 
