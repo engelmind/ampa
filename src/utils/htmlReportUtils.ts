@@ -230,6 +230,9 @@ export function renderFamiliesHtml(families: Family[], options: PrintReportOptio
 }
 
 export function renderEventParticipantsHtml(event: EventDetail, families: Family[], settings: SystemSettings): string {
+  const currentDate=new Date();
+  const today=[currentDate.getFullYear(),String(currentDate.getMonth()+1).padStart(2,'0'),String(currentDate.getDate()).padStart(2,'0')].join('-');
+  const isPending=event.eventDate>today;
   const byFamily = new Map<string, EventDetail['attendees']>();
   for (const attendee of event.attendees) {
     if (!byFamily.has(attendee.familyId)) byFamily.set(attendee.familyId, []);
@@ -285,17 +288,20 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
     }).join('');
     return '<article class="event-family">' + title + rows + '</article>';
   }).join('');
-  const body = hero + summary([['Familias participantes', keys.length], ['Asistentes', event.attendees.length],
+  const body = hero + summary([[isPending?'Familias precargadas':'Familias participantes', keys.length],
+    [isPending?'Personas precargadas':'Asistentes', event.attendees.length],
     ['Adultos', event.attendees.filter(a => a.personType === 'guardian').length],
     ['Hijos/as', event.attendees.filter(a => a.personType === 'student').length]]) +
-    reportSectionTitle('Control de participación por familias', keys.length) +
+    (isPending ? '<div class="privacy">Actividad aún no celebrada: este documento refleja únicamente asistencia precargada y NO acredita la presencia real.</div>' : '') +
+    reportSectionTitle(isPending?'Personas precargadas por unidad familiar':'Control de participación por familias', keys.length) +
     (panels || '<p class="blank">Aún no hay participantes registrados.</p>');
   return documentHtml({
     academicYear: event.academicYear || settings.activeAcademicYear,
     schoolName: settings.schoolName,
     associationName: settings.associationName
   }, {
-    title: 'Participantes · ' + event.title, label: 'Informe de actividad',
+    title: (isPending?'Asistencia precargada':'Participantes') + ' · ' + event.title,
+    label: isPending?'Control previo sin verificar':'Informe de actividad',
     detail: eventDate + ' · Adultos primero, hijos después · Contactos de adultos participantes'
   }, body);
 }
