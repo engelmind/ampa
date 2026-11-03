@@ -98,17 +98,17 @@ const summary = (items: Array<[string, string | number]>): string =>
     '<div class="summary-item"><strong>' + escapeHtml(v) + '</strong><span>' + escapeHtml(k) + '</span></div>'
   ).join('') + '</div>';
 
-const stylesheet = (landscape: boolean): string => [
+const stylesheet = (): string => [
   // Los pies se sitúan en las cajas de margen de cada página, no como elementos
   // position:fixed (que Chromium puede superponer al primer registro siguiente).
-  '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 13mm 11mm 16mm;' +
+  '@page { size: A4 portrait; margin: 13mm 11mm 16mm;' +
   ' @bottom-left {content: "AMPA Agustinos Granada · Documento de uso interno · Información confidencial";' +
   ' color:#64748b; font: 7pt \'Plus Jakarta Sans\',system-ui,sans-serif; border-top:1px solid #cbd5e1; padding-top:1mm; width:150mm; }' +
   ' @bottom-right {content: "Página " counter(page) " de " counter(pages); color:#65748b; font:8pt \'Plus Jakarta Sans\',system-ui,sans-serif;} }',
   '*{box-sizing:border-box}',
   'html{background:#eef2f6}',
   'body{margin:0;font:10pt/1.4 \'Plus Jakarta Sans\',system-ui,-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-font-smoothing:antialiased}',
-  '.document{max-width:' + (landscape ? '275mm' : '190mm') + ';margin:14px auto;background:#fff;padding:12mm 11mm;box-shadow:0 10px 36px #0f172a20}',
+  '.document{max-width:190mm;margin:14px auto;background:#fff;padding:12mm 11mm;box-shadow:0 10px 36px #0f172a20}',
   '.topline{height:3.4mm;background:linear-gradient(90deg,#b91c1c 0%,#dc2626 66%,#f59e0b 66%,#f59e0b 100%);margin:-12mm -11mm 8mm}',
   '.brand{display:flex;align-items:center;justify-content:space-between;gap:10mm;padding-bottom:5mm;border-bottom:1px solid #e2e8f0}',
   '.brand img{max-width:54mm;max-height:19mm;object-fit:contain;object-position:left center}',
@@ -146,7 +146,7 @@ const stylesheet = (landscape: boolean): string => [
   '.person small{display:inline;color:#64748b;font-size:7.2pt;margin-left:1.5mm}',
   '.family-foot{font-size:7.3pt;color:#64748b;border-top:1px dashed #e2e8f0;padding-top:1.6mm;margin-top:2mm}',
   '.empty{color:#94a3b8;font-style:italic;font-size:8pt}',
-  '.family-strip{display:grid;grid-template-columns:' + (landscape ? '55mm 1fr' : '48mm 1fr') + ';gap:3mm;align-items:start;border-bottom:1px solid #e2e8f0;border-left:2px solid #b91c1c;padding:1.6mm 2.2mm;margin-bottom:1mm}',
+  '.family-strip{display:grid;grid-template-columns:48mm 1fr;gap:3mm;align-items:start;border-bottom:1px solid #e2e8f0;border-left:2px solid #b91c1c;padding:1.6mm 2.2mm;margin-bottom:1mm}',
   '.family-strip:nth-of-type(even){background:#f8fafc}',
   '.strip-identity b{display:block;font-size:8.3pt;color:#0f172a;overflow-wrap:anywhere}',
   '.strip-identity>span{display:flex;gap:2mm;align-items:center;margin-top:.7mm}',
@@ -197,7 +197,8 @@ const stylesheet = (landscape: boolean): string => [
   '.event-roster-title span{font-size:7.2pt;font-weight:600;color:#64748b;white-space:nowrap}',
   '.event-roster-two{display:grid;grid-template-columns:1fr 1fr;gap:4.8mm}',
   '.event-roster-simple .event-roster-two{grid-template-columns:1fr;row-gap:1.6mm}',
-  '.event-roster-simple .event-roster-line{gap:3mm;white-space:nowrap}',
+  '.event-roster-simple .event-roster-line{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.55fr);gap:2mm;align-items:baseline;white-space:normal}',
+  '.event-roster-simple .event-roster-person,.event-roster-simple .event-roster-meta{min-width:0;overflow-wrap:anywhere}',
   '.event-roster-simple .event-roster-meta{font-size:7pt}',
   '.event-roster-checklist .event-roster-group-title{margin-bottom:1.5mm}',
   '.event-roster-group{min-width:0}',
@@ -215,7 +216,7 @@ const stylesheet = (landscape: boolean): string => [
   '@media(max-width:660px){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
 ].join('\n');
 
-type Layout = { title: string; detail?: string; label?: string; landscape?: boolean; privacy?: string };
+type Layout = { title: string; detail?: string; label?: string; privacy?: string };
 
 const documentHtml = (settings: PrintReportOptions, layout: Layout, body: string): string => {
   const issueDate = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
@@ -229,7 +230,7 @@ const documentHtml = (settings: PrintReportOptions, layout: Layout, body: string
     '<link rel="preconnect" href="https://fonts.googleapis.com">',
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap">',
-    '<style>', stylesheet(!!layout.landscape), '</style></head><body>',
+    '<style>', stylesheet(), '</style></head><body>',
     '<div class="document"><div class="topline"></div>',
     '<header class="brand"><img src="/logo-ampa-corporate.webp" alt="Logotipo AMPA Agustinos Granada">',
     '<div class="brand-copy"><strong>', safeText(settings.associationName, 'AMPA Agustinos Granada'), '</strong>',
@@ -415,7 +416,6 @@ export function renderEventRegistrationsHtml(
     title:(mode==='check'?'Lista Check':'Lista simple')+' · '+event.title,
     label:mode==='check'?'Control de asistencia':'Relación de inscritos',
     detail:eventDate+' · '+(mode==='check'?'Nombres y casillas de control':'Adultos y menores por unidad familiar'),
-    landscape:mode==='simple',
     privacy:'Uso interno del AMPA. '+explanation+' Este documento no acredita asistencia efectiva.'
   },summaryHtml+reportSectionTitle('Familias y personas inscritas',registrations.length)+
       (panels||'<p class="blank">No hay familias confirmadas para este evento.</p>'));
@@ -435,7 +435,7 @@ export function renderReportHtml(kind: HtmlReportKind, families: Family[], setti
       '<p class="blank">No hay familias para los filtros actuales.</p>');
     return documentHtml(options, {
       title: 'Lista compacta de familias', detail: 'Una unidad familiar por bloque · Adultos antes que hijos',
-      label: 'Listado operativo', landscape: true
+      label: 'Listado operativo'
     }, body);
   }
   if (kind === 'compact-family-cards') {
