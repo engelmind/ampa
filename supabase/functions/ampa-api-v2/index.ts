@@ -1153,7 +1153,7 @@ Deno.serve(async (req: Request) => {
         sql`select family_id from event_families where event_id=${id}::uuid order by created_at`,
         sql`select id,family_id,person_type,person_id,participant_name from event_attendees where event_id=${id}::uuid order by created_at`,
         sql`
-          select r.id,r.family_id,r.status,r.verified_email,r.registration_kind,r.created_at,r.updated_at,
+          select r.id,r.family_id,r.status,r.verified_email,r.registration_kind,r.form_children,r.created_at,r.updated_at,
                  f.family_name,f.membership_number,
                  a.person_type,a.person_id,a.participant_name
           from event_registrations r
@@ -1167,7 +1167,8 @@ Deno.serve(async (req: Request) => {
         if(!registrationsMap.has(row.id)){
           registrationsMap.set(row.id,{
             id:row.id,familyId:row.family_id,familyName:row.family_name,membershipNumber:row.membership_number,
-            status:row.status,verifiedEmail:row.verified_email,registrationKind:row.registration_kind||'member',createdAt:row.created_at,updatedAt:row.updated_at,attendees:[]
+            status:row.status,verifiedEmail:row.verified_email,registrationKind:row.registration_kind||'member',createdAt:row.created_at,updatedAt:row.updated_at,
+            formChildren:Array.isArray(row.form_children)?row.form_children:[],attendees:[]
           });
         }
         if(row.person_id) registrationsMap.get(row.id).attendees.push({
