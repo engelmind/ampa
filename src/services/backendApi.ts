@@ -76,6 +76,17 @@ export const backendApi = {
       {method:'PUT',body:JSON.stringify({attendees})}
     ),
 
+  manageEventRegistration: (eventId:string,familyId:string,attendees:Array<{personType:'guardian'|'student';personId:string}>) =>
+    request<{ok:boolean;registrationId:string;status:'confirmed'|'waitlist'|'cancelled';participantCount:number}>(
+      `/api/events/${eventId}/registrations/manual`,
+      {method:'POST',body:JSON.stringify({familyId,attendees})}
+    ),
+  saveEventFamilyAttendance: (eventId:string,familyId:string,attendees:Array<{personType:'guardian'|'student';personId:string}>) =>
+    request<{ok:boolean;participantCount:number}>(
+      `/api/events/${eventId}/attendance/family`,
+      {method:'PUT',body:JSON.stringify({familyId,attendees})}
+    ),
+
   getPublicEvent: (token:string) => request<{ event: {
     title:string; eventDate:string; academicYear:string; description:string; imageDataUrl?:string;
     registrationEnabled:boolean; registrationDeadline?:string|null; registrationCapacity?:number|null;
