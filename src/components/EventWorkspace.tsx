@@ -367,7 +367,10 @@ export function EventWorkspace({
     {tab==='attendance'&&<section className="rounded-[28px] border border-white/70 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="text-lg font-black text-slate-950">{pendingVerification?'Asistencia precargada · pendiente de comprobación':'Asistencia presencial'}</h2><p className="text-[11px] text-slate-500">Control independiente de las inscripciones. Cada familia se guarda por separado.</p></div>
-        <button type="button" onClick={openAttendanceReport} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><FileDown size={14}/> PDF de asistencia</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={()=>openRegistrationReport('check')} className="flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-[11px] font-bold text-indigo-700"><ClipboardCheck size={14}/> Lista Check para pasar lista</button>
+          <button type="button" onClick={openAttendanceReport} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><FileDown size={14}/>{pendingVerification?'Precarga (PDF)':'Asistencia guardada (PDF)'}</button>
+        </div>
       </div>
       {pendingVerification&&<p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">Actividad futura: hay {detail.attendees.length} personas precargadas que NO deben considerarse asistencia real hasta comprobar su presencia. No se borrarán automáticamente. Cualquier nuevo registro anticipado requiere confirmación.</p>}
       <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_200px]">
