@@ -186,6 +186,24 @@ const stylesheet = (landscape: boolean): string => [
   '.check-square{width:3.2mm;height:3.2mm;border:1px solid #94a3b8;border-radius:.5mm;display:inline-block}',
   '.attendee-role{color:#64748b;font-size:7.5pt;text-align:right}',
   '.attendee-row.child-row .attendee-role{color:#a16262}',
+  '.event-roster-summary{display:flex;align-items:center;gap:2.3mm;flex-wrap:wrap;border-radius:2mm;background:#f8fafc;padding:2.4mm 3mm;font-size:8.2pt;color:#475569;margin:3mm 0 4mm}',
+  '.event-roster-summary b{font-size:10.5pt;color:#991b1b;margin-left:2mm}',
+  '.event-roster-family{break-inside:avoid;page-break-inside:avoid;border:1px solid #dbe3ec;border-left:2mm solid #b91c1c;border-radius:1.7mm;padding:2mm 2.5mm;margin:0 0 2mm;background:#fff}',
+  '.event-roster-family:nth-of-type(even){background:#fafbfc}',
+  '.event-roster-title{display:flex;align-items:baseline;justify-content:space-between;gap:3mm;border-bottom:1px solid #e2e8f0;padding-bottom:1mm;margin-bottom:1.4mm}',
+  '.event-roster-title strong{font-size:9pt;color:#0f172a;line-height:1.24}',
+  '.event-roster-title span{font-size:7.2pt;font-weight:600;color:#64748b;white-space:nowrap}',
+  '.event-roster-two{display:grid;grid-template-columns:1fr 1fr;gap:4.8mm}',
+  '.event-roster-group{min-width:0}',
+  '.event-roster-group-title{font-size:7.2pt;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.035em;margin:0 0 1mm}',
+  '.event-roster-group-title small{font-size:7.2pt;font-weight:600;color:#64748b}',
+  '.event-roster-line{display:flex;gap:1.7mm;align-items:baseline;min-width:0;line-height:1.35;font-size:7.5pt;padding:.65mm 0}',
+  '.event-roster-line+.event-roster-line{border-top:1px solid #f1f5f9}',
+  '.event-roster-person{color:#1e293b;font-weight:650;min-width:0}',
+  '.event-roster-meta{color:#475569;min-width:0;white-space:nowrap;font-size:6.9pt;overflow-wrap:anywhere}',
+  '.event-roster-check{gap:2mm;align-items:center;padding:1.05mm 0;font-size:8.2pt}',
+  '.event-roster-box{display:inline-block;width:3.5mm;height:3.5mm;flex:0 0 3.5mm;border:1.1px solid #64748b;border-radius:.45mm;background:#fff}',
+  '.event-roster-empty{color:#94a3b8;font-style:italic;font-size:7.2pt}',
   '.blank{padding:6mm;text-align:center;border:1px dashed #cbd5e1;color:#64748b}',
   '@media print{html,body{background:#fff}.document{box-shadow:none;padding:0;max-width:none;margin:0}.topline{margin:0 0 5mm}.brand{padding-bottom:3mm}}',
   '@media(max-width:660px){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
@@ -307,91 +325,83 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
 }
 
 
-/** Relación de solicitudes del evento: incluye el contexto familiar sin sumar
- * hijos no inscritos al número de plazas. Los datos son de uso interno. */
-export function renderEventRegistrationsHtml(event: EventDetail, families: Family[], settings: SystemSettings): string {
-  const registrations=event.registrations.filter(registration=>registration.status!=='cancelled')
+/** Relaciones imprimibles de personas inscritas, sin miembros ajenos al evento.
+ * Lista simple: contacto de cada adulto y curso del menor en la misma línea.
+ * Lista check: solo nombres por familia y una casilla individual para pasar lista.
+ * La impresión es un control operativo: no confirma asistencia por sí misma. */
+export function renderEventRegistrationsHtml(
+  event: EventDetail, families: Family[], settings: SystemSettings,
+  mode:'simple'|'check'='simple'
+): string {
+  const registrations=event.registrations
+    .filter(registration=>registration.status==='confirmed')
     .sort((a,b)=>a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'}));
   const familyMap=new Map(families.map(family=>[family.id,family] as const));
+  const isParentsSchool=event.title.toLocaleLowerCase('es').includes('escuela de padres');
   const currentYear=event.academicYear||settings.activeAcademicYear;
-  const eventDate=event.eventDate ? new Date(event.eventDate+'T12:00:00').toLocaleDateString('es-ES') : 'Sin fecha';
-  const participantCount=registrations.reduce((n,registration)=>n+registration.attendees.length,0);
-  const guardianCount=registrations.reduce((n,registration)=>n+registration.attendees.filter(person=>person.personType==='guardian').length,0);
-  const studentCount=participantCount-guardianCount;
-  const linkedChildren=registrations.reduce((n,registration)=>n+(familyMap.get(registration.familyId)?.students.length||0),0);
-  const childrenDeclared=registrations.reduce((n,registration)=>n+(registration.formChildren||[]).length,0);
+  const eventDate=event.eventDate
+    ? new Date(event.eventDate+'T12:00:00').toLocaleDateString('es-ES') : '';
+  const adults=registrations.reduce((n,r)=>n+r.attendees.filter(a=>a.personType==='guardian').length,0);
+  const children=registrations.reduce((n,r)=>n+r.attendees.filter(a=>a.personType==='student').length,0);
+  const adultsLabel=isParentsSchool?'Adultos · Escuela de Padres':'Adultos';
+  const childrenLabel=isParentsSchool?'Niños/as · Ludoteca':'Hijos/as';
 
-  const displayRow=(name:string,role:string,registered:boolean,isChild:boolean,phone='',email='',pending=false,declaredInForm=false):string=>{
-    const contacts=registered && !isChild && (phone||email)
-      ? '<div class="attendee-contacts">'+(phone?'<span>Tel.: '+escapeHtml(phone)+'</span>':'')+
-        (email?'<span>Email: '+escapeHtml(email)+'</span>':'')+'</div>' : '';
-    return '<div class="attendee-row'+(isChild?' child-row':'')+'">'+
-      '<span class="check-square"'+(!registered?' style="visibility:hidden"':'')+'></span>'+
-      '<span class="attendee-details"><span class="attendee-name">'+safeText(name)+'</span>'+contacts+'</span>'+
-      '<span class="attendee-role">'+escapeHtml(role)+(pending?'<br>Pendiente de vincular':'')+
-      '<br>'+ (registered?'Inscrito (plaza)':declaredInForm?'Incluido en formulario':'Solo ficha familiar')+'</span></div>';
-  };
+  const line=(name:string,meta:string,check:boolean):string=>
+    '<div class="event-roster-line '+(check?'event-roster-check':'')+'">'+
+    (check?'<span class="event-roster-box"></span>':'')+
+    '<span class="event-roster-person">'+escapeHtml(name)+'</span>'+
+    (!check&&meta?'<span class="event-roster-meta">'+escapeHtml(meta)+'</span>':'')+
+    '</div>';
 
-  const panels=registrations.map(registration=>{
+  const panels=registrations.map((registration,index)=>{
     const family=familyMap.get(registration.familyId);
-    const selected=new Set(registration.attendees.map(person=>person.personType+':'+person.personId));
-    const declaredIds=new Set((registration.formChildren||[]).map(child=>child.studentId));
-    const registeredAdults=registration.attendees.filter(person=>person.personType==='guardian');
-    const adultRows=registeredAdults.map(person=>{
-      const matching=family?.guardians.find(guardian=>guardian.id===person.personId);
-      return displayRow(
-        person.participantName,
-        matching?guardianLabel(matching.relationship):'Adulto declarado',
-        true,false,matching?.phone||'',matching?.email||'',!matching
-      );
-    });
-    for(const guardian of family?.guardians||[]){
-      if(!selected.has('guardian:'+guardian.id)){
-        adultRows.push(displayRow(guardian.fullName,guardianLabel(guardian.relationship),false,false));
-      }
-    }
-    const registeredKids=registration.attendees.filter(person=>person.personType==='student');
-    const childRows=(family?.students||[]).map(student=>
-      displayRow(
-        studentName(student),studentCourse(student,currentYear),
-        selected.has('student:'+student.id),true,'','',false,declaredIds.has(student.id)
-      )
-    );
-    for(const child of registeredKids){
-      if(!(family?.students||[]).some(student=>student.id===child.personId)){
-        childRows.push(displayRow(child.participantName,'Hijo/a',true,true,'','',true,declaredIds.has(child.personId)));
-      }
-    }
-    for(const declared of registration.formChildren||[]){
-      if(!(family?.students||[]).some(student=>student.id===declared.studentId) && !registeredKids.some(child=>child.personId===declared.studentId)){
-        childRows.push(displayRow(declared.name,declared.course||'Hijo/a',false,true,'','',true,true));
-      }
-    }
-    const familyName=family?.familyName||registration.familyName;
-    const title='<div class="family-title"><strong>Familia '+safeText(familyName)+'</strong>'+
-      '<span class="family-metadata"><span class="member-id">'+safeText(registration.membershipNumber,'—')+'</span>'+
-      '<span class="member-id">'+registration.attendees.length+' con plaza · '+(registration.formChildren||[]).length+' hijos en formulario</span></span></div>';
-    return '<article class="event-family">'+title+
-      '<div class="muted">Padres, madres y tutores</div>'+adultRows.join('')+
-      '<div class="muted" style="margin-top:2mm;border-top:1px solid #e2e8f0;padding-top:1.5mm">Hijos/as vinculados a la familia</div>'+
-      (childRows.join('')||'<div class="empty">Sin hijos/as registrados</div>')+
-      '</article>';
+    const listedAdults=registration.attendees.filter(a=>a.personType==='guardian');
+    const listedChildren=registration.attendees.filter(a=>a.personType==='student');
+    const guardianLines=listedAdults.map(attendee=>{
+      const guardian=family?.guardians.find(g=>g.id===attendee.personId);
+      const contacts=[
+        guardian?.phone ? 'Tel.: '+String(guardian.phone).trim() : '',
+        guardian?.email ? 'Email: '+String(guardian.email).trim() : ''
+      ].filter(Boolean).join('   ·   ');
+      return line(attendee.participantName,contacts,mode==='check');
+    }).join('');
+    const childLines=listedChildren.map(attendee=>{
+      const student=family?.students.find(s=>s.id===attendee.personId);
+      const course=student ? studentCourse(student,currentYear) : '';
+      return line(attendee.participantName,course==='Sin curso asignado'?'':course,mode==='check');
+    }).join('');
+    const title='<div class="event-roster-title"><strong>'+
+      (index+1)+'. Familia '+escapeHtml(registration.familyName)+'</strong>'+
+      '<span>'+escapeHtml(registration.membershipNumber||'')+
+      ' · '+registration.attendees.length+' inscritos</span></div>';
+    return '<article class="event-roster-family">'+title+
+      '<div class="event-roster-two">'+
+      '<div class="event-roster-group"><div class="event-roster-group-title">'+escapeHtml(adultsLabel)+
+      ' <small>('+listedAdults.length+')</small></div>'+ (guardianLines||'<div class="event-roster-empty">Sin adultos inscritos</div>')+'</div>'+
+      '<div class="event-roster-group"><div class="event-roster-group-title">'+escapeHtml(childrenLabel)+
+      ' <small>('+listedChildren.length+')</small></div>'+ (childLines||'<div class="event-roster-empty">Sin menores inscritos</div>')+'</div>'+
+      '</div></article>';
   }).join('');
-  const body='<section class="event-hero no-image"><div><h2>'+safeText(event.title)+'</h2>'+
-    '<div class="event-info"><span>Fecha: '+escapeHtml(eventDate)+'</span><span>Curso '+safeText(currentYear)+'</span></div>'+
-    (event.description?'<div class="event-description">'+escapeHtml(event.description)+'</div>':'')+
-    '</div></section>'+
-    summary([['Familias inscritas',registrations.length],['Personas inscritas',participantCount],
-      ['Adultos con plaza',guardianCount],['Menores con plaza',studentCount],['Hijos/as en formulario',childrenDeclared],['Hijos/as vinculados',linkedChildren]])+
-    reportSectionTitle('Inscripciones y composición familiar',registrations.length)+
-    (panels||'<p class="blank">No hay inscripciones activas.</p>');
+
+  const summaryHtml='<div class="event-roster-summary"><b>'+registrations.length+'</b> familias inscritas'+
+    '<b>'+adults+'</b> adultos'+
+    '<b>'+children+'</b> menores'+
+    '<b>'+(adults+children)+'</b> personas en total</div>';
+  const explanation=mode==='check'
+    ? 'Control de asistencia por familias. Marque la casilla de cada persona al comprobar su presencia. Las casillas se imprimen vacías.'
+    : 'Relación de personas inscritas. Los teléfonos y correos se muestran solo cuando están disponibles en la ficha del adulto.';
   return documentHtml({
-    academicYear:currentYear,schoolName:settings.schoolName,associationName:settings.associationName
+    academicYear:currentYear,
+    schoolName:settings.schoolName,
+    associationName:settings.associationName
   },{
-    title:'Inscripciones · '+event.title,label:'Registro de solicitudes',landscape:false,
-    detail:eventDate+' · Adultos primero, hijos después',
-    privacy:'«Incluido en formulario» acredita que el menor fue identificado en la solicitud, no que ocupe plaza. «Solo ficha familiar» identifica a los hijos no mencionados en esa solicitud. Este listado no acredita asistencia efectiva.'
-  },body);
+    title:(mode==='check'?'Lista Check':'Lista simple')+' · '+event.title,
+    label:mode==='check'?'Control de asistencia':'Relación de inscritos',
+    detail:eventDate+' · '+(mode==='check'?'Nombres y casillas de control':'Adultos y menores por unidad familiar'),
+    landscape:mode==='simple',
+    privacy:'Uso interno del AMPA. '+explanation+' Este documento no acredita asistencia efectiva.'
+  },summaryHtml+reportSectionTitle('Familias y personas inscritas',registrations.length)+
+      (panels||'<p class="blank">No hay familias confirmadas para este evento.</p>'));
 }
 
 export function renderReportHtml(kind: HtmlReportKind, families: Family[], settings: SystemSettings): string {
