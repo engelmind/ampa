@@ -92,11 +92,15 @@ export function createEventParticipantsPdfArtifact(
   event: EventDetail, families: Family[], settings: SystemSettings
 ): PdfArtifact {
   const uniqueFamilies = new Set(event.attendees.map(attendee => attendee.familyId)).size;
+  const date=new Date();
+  const today=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+  const pending=event.eventDate>today;
   return htmlArtifact(
     renderEventParticipantsHtml(event, families, settings),
-    'participantes_' + safeFilenamePart(event.title) + '_' + (event.eventDate || 'sin_fecha') + '.pdf',
-    'Participantes · ' + event.title,
-    uniqueFamilies + ' familias · ' + event.attendees.length + ' participantes · HTML listo para impresión'
+    (pending?'asistencia_precargada_':'participantes_') + safeFilenamePart(event.title) + '_' + (event.eventDate || 'sin_fecha') + '.pdf',
+    (pending?'Asistencia precargada · ':'Participantes · ') + event.title,
+    uniqueFamilies + ' familias · ' + event.attendees.length +
+      (pending?' personas pendientes de comprobación · HTML listo para impresión':' participantes · HTML listo para impresión')
   );
 }
 
