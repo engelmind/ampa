@@ -373,7 +373,7 @@ export function renderEventRegistrationsHtml(
       const student=family?.students.find(s=>s.id===attendee.personId);
       const source=registration.formChildren?.find(c=>c.studentId===attendee.personId)?.course?.trim()||'';
       const rawCourse=student ? studentCourse(student,currentYear) : '';
-      const fromForm=source==='3' ? '3 años' : /^2\\s*años$/i.test(source) ? '2 años'
+      const fromForm=source==='3' ? '3 años' : /^2\s*años$/i.test(source) ? '2 años'
         : /aún no ha entrado al cole/i.test(source) ? '1 año · sin escolarizar' : source;
       const course=student?.className?.trim()
         ? rawCourse : (fromForm || (rawCourse==='Sin curso asignado'?'':rawCourse));
