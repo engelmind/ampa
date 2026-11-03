@@ -101,6 +101,8 @@ export interface EventRegistrationRecord {
   createdAt: string;
   updatedAt: string;
   attendees: Array<Pick<EventAttendee, 'personType' | 'personId' | 'participantName'>>;
+  /** Hijos identificados por la familia en el formulario, ocupen plaza o no. */
+  formChildren?: Array<{ studentId: string; name: string; course: string; sourceRow: number }>;
 }
 
 export interface EventDetail {
