@@ -453,7 +453,7 @@ async function sendRegistrationMail(to:string,subject:string,html:string){
   return {sent:response.ok,configured:true,result,status:response.status};
 }
 
-async function promoteEventWaitlist(eventId:string){
+async function promoteEventWaitlist(eventId:string, notify=true){
   const promoted:Array<{email:string;familyName:string;eventTitle:string}>=[];
 
   await sql.begin(async tx=>{
@@ -495,7 +495,7 @@ async function promoteEventWaitlist(eventId:string){
     }
   });
 
-  for(const item of promoted){
+  for(const item of notify ? promoted : []){
     await sendRegistrationMail(
       item.email,
       `Plaza confirmada · ${item.eventTitle}`,
@@ -1257,6 +1257,143 @@ Deno.serve(async (req: Request) => {
         registrationDeadline:rows[0].registration_deadline,
         deadlineCleared
       });
+    }
+
+
+    // Gestión interna: altas, bajas, reactivaciones y edición de personas por familia.
+    // Los cambios administrativos no envían correos sin una acción explícita.
+    const manualRegistrationMatch=path.match(/^\/events\/([0-9a-f-]+)\/registrations\/manual$/i);
+    if(manualRegistrationMatch && req.method==='POST'){
+      const u=await requireRole(req,['superadmin','admin']);
+      const eventId=manualRegistrationMatch[1];
+      const body=await readBody(req);
+      const familyId=String(body.familyId||'');
+      const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if(!uuid.test(familyId) || !Array.isArray(body.attendees) || body.attendees.length>20) return reply({error:'INVALID_REQUEST'},400);
+
+      const [eventRows,familyRows,priorRows]=await Promise.all([
+        sql`select id,title,registration_capacity,max_attendees_per_family from events where id=${eventId}::uuid`,
+        sql`select id,family_name,is_active_this_year from families where id=${familyId}::uuid`,
+        sql`select id,status,registration_kind from event_registrations where event_id=${eventId}::uuid and family_id=${familyId}::uuid`
+      ]);
+      if(!eventRows.length || !familyRows.length) return reply({error:'EVENT_OR_FAMILY_NOT_FOUND'},404);
+      const maxPerFamily=Number(eventRows[0].max_attendees_per_family||8);
+      if(body.attendees.length>maxPerFamily) return reply({error:'FAMILY_LIMIT_EXCEEDED',maxPerFamily},400);
+      if(!body.attendees.length && !priorRows.length) return reply({error:'REGISTRATION_NOT_FOUND'},404);
+
+      const oldAttendees=priorRows.length?await sql`
+        select person_type,person_id,participant_name from event_registration_attendees
+        where registration_id=${priorRows[0].id}::uuid`:[] as any[];
+      const checked:Array<{personType:'guardian'|'student';personId:string;participantName:string}>=[];
+      const seen=new Set<string>();
+      for(const item of body.attendees){
+        const personType=String(item?.personType||'');
+        const personId=String(item?.personId||'');
+        if(!['guardian','student'].includes(personType) || !uuid.test(personId)) return reply({error:'INVALID_ATTENDEE'},400);
+        const key=personType+':'+personId;
+        if(seen.has(key)) continue;
+        seen.add(key);
+        const known=personType==='guardian'
+          ? await sql`select trim(concat_ws(' ',first_name,last_name)) as name from guardians where id=${personId}::uuid and family_id=${familyId}::uuid`
+          : await sql`select trim(concat_ws(' ',first_name,last_name)) as name from students where id=${personId}::uuid and family_id=${familyId}::uuid`;
+        const legacy=oldAttendees.find((p:any)=>p.person_type===personType && p.person_id===personId);
+        const participantName=String(known[0]?.name||legacy?.participant_name||'').trim();
+        if(!participantName) return reply({error:'ATTENDEE_NOT_IN_FAMILY'},400);
+        checked.push({personType:personType as 'guardian'|'student',personId,participantName:participantName.slice(0,180)});
+      }
+      let resultStatus='cancelled';
+      const result=await sql.begin(async tx=>{
+        const locked=await tx`select id,registration_capacity from events where id=${eventId}::uuid for update`;
+        if(!locked.length) return null;
+        const existing=await tx`select id,status,registration_kind from event_registrations
+          where event_id=${eventId}::uuid and family_id=${familyId}::uuid for update`;
+        if(checked.length){
+          const occupied=await tx`
+            select count(*)::int as n from event_registration_attendees a
+            join event_registrations r on r.id=a.registration_id
+            where r.event_id=${eventId}::uuid and r.status='confirmed'
+              and r.family_id<>${familyId}::uuid`;
+          const waiting=await tx`
+            select count(*)::int as n from event_registrations
+            where event_id=${eventId}::uuid and status='waitlist' and family_id<>${familyId}::uuid`;
+          const capacity=locked[0].registration_capacity;
+          const hasEarlierWaiting=Number(waiting[0]?.n||0)>0 && existing[0]?.status!=='confirmed';
+          resultStatus=capacity!=null && (Number(occupied[0]?.n||0)+checked.length>Number(capacity) || hasEarlierWaiting)
+            ? 'waitlist' : 'confirmed';
+        }
+        const rows=await tx`insert into event_registrations(event_id,family_id,status,verified_email,registration_kind,updated_at)
+          values(${eventId}::uuid,${familyId}::uuid,${resultStatus},'',
+            ${familyRows[0].is_active_this_year?'member':'public'},now())
+          on conflict(event_id,family_id) do update set
+            status=excluded.status,updated_at=now()
+          returning id,status`;
+        const registrationId=rows[0].id;
+        if(checked.length){
+          await tx`delete from event_registration_attendees where registration_id=${registrationId}::uuid`;
+          for(const person of checked){
+            await tx`insert into event_registration_attendees(registration_id,person_type,person_id,participant_name)
+              values(${registrationId}::uuid,${person.personType},${person.personId}::uuid,${person.participantName})`;
+          }
+        }
+        return {id:registrationId,status:rows[0].status};
+      });
+      if(!result) return reply({error:'EVENT_NOT_FOUND'},404);
+      await promoteEventWaitlist(eventId,false);
+      await log(u.id,'event','update',
+        `Gestión manual: Familia ${familyRows[0].family_name} · ${checked.length?'personas '+checked.length:'baja completa'} · ${resultStatus}`,
+        eventId,eventRows[0].title);
+      return reply({ok:true,registrationId:result.id,status:resultStatus,participantCount:checked.length});
+    }
+
+    // La asistencia de una familia se actualiza de forma aislada, sin sobrescribir
+    // la asistencia de ninguna otra familia ni tocar sus inscripciones.
+    const singleAttendanceMatch=path.match(/^\/events\/([0-9a-f-]+)\/attendance\/family$/i);
+    if(singleAttendanceMatch && req.method==='PUT'){
+      const u=await requireRole(req,['superadmin','admin']);
+      const eventId=singleAttendanceMatch[1];
+      const body=await readBody(req);
+      const familyId=String(body.familyId||'');
+      const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if(!uuid.test(familyId)||!Array.isArray(body.attendees)||body.attendees.length>30) return reply({error:'INVALID_REQUEST'},400);
+      const [events,existingFamily]=await Promise.all([
+        sql`select id,title from events where id=${eventId}::uuid`,
+        sql`select id,family_name from families where id=${familyId}::uuid`
+      ]);
+      if(!events.length||!existingFamily.length) return reply({error:'EVENT_OR_FAMILY_NOT_FOUND'},404);
+      const selected:Array<{personType:string;personId:string;participantName:string}>=[];
+      const seen=new Set<string>();
+      for(const person of body.attendees){
+        const personType=String(person?.personType||'');
+        const personId=String(person?.personId||'');
+        if(!['guardian','student'].includes(personType)||!uuid.test(personId)) return reply({error:'INVALID_ATTENDEE'},400);
+        const key=personType+':'+personId;
+        if(seen.has(key)) continue;
+        seen.add(key);
+        const rows=personType==='guardian'
+          ? await sql`select trim(concat_ws(' ',first_name,last_name)) as name from guardians where id=${personId}::uuid and family_id=${familyId}::uuid`
+          : await sql`select trim(concat_ws(' ',first_name,last_name)) as name from students where id=${personId}::uuid and family_id=${familyId}::uuid`;
+        if(!rows.length) return reply({error:'ATTENDEE_NOT_IN_FAMILY'},400);
+        selected.push({personType,personId,participantName:String(rows[0].name).slice(0,180)});
+      }
+      await sql.begin(async tx=>{
+        await tx`select id from events where id=${eventId}::uuid for update`;
+        await tx`delete from event_attendees where event_id=${eventId}::uuid and family_id=${familyId}::uuid`;
+        if(selected.length){
+          await tx`insert into event_families(event_id,family_id) values(${eventId}::uuid,${familyId}::uuid) on conflict do nothing`;
+          for(const person of selected){
+            await tx`insert into event_attendees(event_id,family_id,person_type,person_id,participant_name)
+              values(${eventId}::uuid,${familyId}::uuid,${person.personType},${person.personId}::uuid,${person.participantName})
+              on conflict(event_id,person_type,person_id) do update
+                set family_id=excluded.family_id,participant_name=excluded.participant_name`;
+          }
+        }else{
+          await tx`delete from event_families where event_id=${eventId}::uuid and family_id=${familyId}::uuid`;
+        }
+      });
+      await log(u.id,'event','update',
+        `Asistencia por familia: ${existingFamily[0].family_name} · ${selected.length} personas`,
+        eventId,events[0].title);
+      return reply({ok:true,participantCount:selected.length});
     }
 
     const adminRegistrationMatch=path.match(/^\/events\/([0-9a-f-]+)\/registrations\/([0-9a-f-]+)$/i);
