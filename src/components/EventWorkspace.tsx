@@ -314,6 +314,12 @@ export function EventWorkspace({
         <p className="mt-2 text-[9px] text-slate-400">Mostrando hasta 12 coincidencias; refine la búsqueda para localizar otras familias.</p>
       </div>}
 
+      {regEditorId && (!currentReg || currentReg.status==='cancelled') && currentRegFamily&&<div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4">
+        <div className="mb-3 flex items-center justify-between"><div><h3 className="text-xs font-black text-slate-800">{currentReg?.status==='cancelled'?'Reactivar inscripción':'Nueva inscripción'} · {currentRegFamily.familyName}</h3><p className="mt-1 text-[10px] text-slate-500">Seleccione quién ocupará plaza. Los demás miembros quedan vinculados solo en el directorio.</p></div><button type="button" onClick={()=>setRegEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
+        <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={currentReg?.formChildren} extra={currentReg?.attendees}/>
+        <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={()=>setRegEditorId(null)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600">Cancelar</button><button type="button" disabled={busy||!regSelected.size} onClick={()=>void saveRegistration()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-[11px] font-bold text-white disabled:opacity-50"><Plus size={12} className="inline"/> Confirmar inscripción</button></div>
+      </div>}
+
       <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_180px]">
         <label className="relative"><Search size={15} className="absolute left-3 top-3.5 text-slate-400"/><input value={regQuery} onChange={e=>{setRegQuery(e.target.value);setRegPage(1)}} className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs" placeholder="Buscar familia, socio o persona inscrita…"/></label>
         <select aria-label="Filtrar inscripciones" value={regFilter} onChange={e=>{setRegFilter(e.target.value);setRegPage(1)}} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600">
@@ -329,7 +335,7 @@ export function EventWorkspace({
           {listedPage.map(r=><div key={r.id}>
             <div className="grid gap-2 px-4 py-3 transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_95px_90px_96px] sm:items-center">
               <div className="min-w-0"><div className="truncate text-xs font-extrabold text-slate-800">{r.familyName}</div><div className="font-mono text-[9px] text-slate-400">{r.membershipNumber}</div></div>
-              <div className="text-[11px] font-black text-slate-700">{r.attendees.length} <span className="font-normal text-slate-400">plazas</span></div>
+              <div className="text-[11px] font-black text-slate-700">{r.status==='cancelled'?'—':r.attendees.length} <span className="font-normal text-slate-400">{r.status==='cancelled'?'histórico':'plazas'}</span></div>
               <div><span className={'rounded-lg px-2 py-1 text-[9px] font-bold '+(r.status==='confirmed'?'bg-emerald-50 text-emerald-700':r.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500')}>{labelStatus(r.status)}</span></div>
               <div className="sm:text-right"><button type="button" aria-expanded={regEditorId===r.familyId} onClick={()=>regEditorId===r.familyId?setRegEditorId(null):openRegistration(r.familyId)} className="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-[10px] font-black text-indigo-700">{regEditorId===r.familyId?'Cerrar':'Gestionar'}</button></div>
             </div>
@@ -349,11 +355,6 @@ export function EventWorkspace({
         </div>
         <PageNav page={regPage} total={listed.length} onChange={setRegPage} label="familias"/>
       </div>
-      {regEditorId && !registrationMap.has(regEditorId) && currentRegFamily&&<div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4">
-        <div className="mb-3 flex items-center justify-between"><div><h3 className="text-xs font-black text-slate-800">Nueva inscripción · {currentRegFamily.familyName}</h3><p className="mt-1 text-[10px] text-slate-500">Seleccione quién ocupará plaza. Los demás miembros quedan vinculados solo en el directorio.</p></div><button type="button" onClick={()=>setRegEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
-        <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy}/>
-        <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={()=>setRegEditorId(null)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600">Cancelar</button><button type="button" disabled={busy||!regSelected.size} onClick={()=>void saveRegistration()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-[11px] font-bold text-white disabled:opacity-50"><Plus size={12} className="inline"/> Confirmar inscripción</button></div>
-      </div>}
     </section>}
 
     {tab==='attendance'&&<section className="rounded-[28px] border border-white/70 bg-white p-4 shadow-sm sm:p-5">
