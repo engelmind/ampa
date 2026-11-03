@@ -103,11 +103,11 @@ const stylesheet = (landscape: boolean): string => [
   // position:fixed (que Chromium puede superponer al primer registro siguiente).
   '@page { size: A4 ' + (landscape ? 'landscape' : 'portrait') + '; margin: 13mm 11mm 16mm;' +
   ' @bottom-left {content: "AMPA Agustinos Granada · Documento de uso interno · Información confidencial";' +
-  ' color:#64748b; font: 7pt Arial,sans-serif; border-top:1px solid #cbd5e1; padding-top:1mm; width:150mm; }' +
-  ' @bottom-right {content: "Página " counter(page) " de " counter(pages); color:#65748b; font:8pt Arial,sans-serif;} }',
+  ' color:#64748b; font: 7pt \'Plus Jakarta Sans\',system-ui,sans-serif; border-top:1px solid #cbd5e1; padding-top:1mm; width:150mm; }' +
+  ' @bottom-right {content: "Página " counter(page) " de " counter(pages); color:#65748b; font:8pt \'Plus Jakarta Sans\',system-ui,sans-serif;} }',
   '*{box-sizing:border-box}',
   'html{background:#eef2f6}',
-  'body{margin:0;font:10pt/1.4 Arial,Helvetica,sans-serif;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact}',
+  'body{margin:0;font:10pt/1.4 \'Plus Jakarta Sans\',system-ui,-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-font-smoothing:antialiased}',
   '.document{max-width:' + (landscape ? '275mm' : '190mm') + ';margin:14px auto;background:#fff;padding:12mm 11mm;box-shadow:0 10px 36px #0f172a20}',
   '.topline{height:3.4mm;background:linear-gradient(90deg,#b91c1c 0%,#dc2626 66%,#f59e0b 66%,#f59e0b 100%);margin:-12mm -11mm 8mm}',
   '.brand{display:flex;align-items:center;justify-content:space-between;gap:10mm;padding-bottom:5mm;border-bottom:1px solid #e2e8f0}',
@@ -119,9 +119,13 @@ const stylesheet = (landscape: boolean): string => [
   'h1{margin:1.5mm 0 2mm;font-size:19pt;line-height:1.15;letter-spacing:-.035em;color:#0f172a;overflow-wrap:anywhere}',
   '.report-subtitle{color:#64748b;font-size:8.5pt;margin:0 0 4.5mm}',
   '.summary-grid{display:flex;gap:2.8mm;margin:4.5mm 0 6mm;flex-wrap:wrap}',
-  '.summary-item{padding:3mm 4mm;border:1px solid #e2e8f0;border-radius:2mm;background:#f8fafc;min-width:28mm;flex:1}',
+  '.summary-item{padding:3mm 4mm;border:1px solid #e2e8f0;border-radius:2mm;background:#f8fafc;min-width:28mm;flex:1;break-inside:avoid}',
   '.summary-item strong{display:block;font-size:14pt;line-height:1.1;color:#0f172a}',
-  '.summary-item span{display:block;font-size:7.5pt;color:#64748b;margin-top:1.5mm}',
+  '.summary-item span{display:block;font-size:7.5pt;color:#64748b;margin-top:1.5mm;font-weight:600}',
+  '.summary-item:nth-child(4n+1){border-top:2px solid #b91c1c}',
+  '.summary-item:nth-child(4n+2){border-top:2px solid #2563eb}',
+  '.summary-item:nth-child(4n+3){border-top:2px solid #db2777}',
+  '.summary-item:nth-child(4n){border-top:2px solid #0d9488}',
   '.section-heading{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1.5px solid #cbd5e1;padding-bottom:1.8mm;margin:5mm 0 2.5mm;gap:3mm;break-after:avoid}',
   '.section-heading h2{font-size:10pt;letter-spacing:.035em;margin:0;color:#334155}',
   '.section-heading span{font-size:7.5pt;color:#64748b}',
@@ -186,8 +190,6 @@ const stylesheet = (landscape: boolean): string => [
   '.check-square{width:3.2mm;height:3.2mm;border:1px solid #94a3b8;border-radius:.5mm;display:inline-block}',
   '.attendee-role{color:#64748b;font-size:7.5pt;text-align:right}',
   '.attendee-row.child-row .attendee-role{color:#a16262}',
-  '.event-roster-summary{display:flex;align-items:center;gap:2.3mm;flex-wrap:wrap;border-radius:2mm;background:#f8fafc;padding:2.4mm 3mm;font-size:8.2pt;color:#475569;margin:3mm 0 4mm}',
-  '.event-roster-summary b{font-size:10.5pt;color:#991b1b;margin-left:2mm}',
   '.event-roster-family{break-inside:avoid;page-break-inside:avoid;border:1px solid #dbe3ec;border-left:2mm solid #b91c1c;border-radius:1.7mm;padding:2mm 2.5mm;margin:0 0 2mm;background:#fff}',
   '.event-roster-family:nth-of-type(even){background:#fafbfc}',
   '.event-roster-title{display:flex;align-items:baseline;justify-content:space-between;gap:3mm;border-bottom:1px solid #e2e8f0;padding-bottom:1mm;margin-bottom:1.4mm}',
@@ -223,7 +225,11 @@ const documentHtml = (settings: PrintReportOptions, layout: Layout, body: string
     '<!doctype html><html lang="es"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
     '<base href="', escapeHtml(typeof window !== 'undefined' ? window.location.origin + '/' : '/'), '">',
-    '<title>', escapeHtml(title), '</title><style>', stylesheet(!!layout.landscape), '</style></head><body>',
+    '<title>', escapeHtml(title), '</title>',
+    '<link rel="preconnect" href="https://fonts.googleapis.com">',
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap">',
+    '<style>', stylesheet(!!layout.landscape), '</style></head><body>',
     '<div class="document"><div class="topline"></div>',
     '<header class="brand"><img src="/logo-ampa-corporate.webp" alt="Logotipo AMPA Agustinos Granada">',
     '<div class="brand-copy"><strong>', safeText(settings.associationName, 'AMPA Agustinos Granada'), '</strong>',
@@ -392,10 +398,12 @@ export function renderEventRegistrationsHtml(
       '</div></article>';
   }).join('');
 
-  const summaryHtml='<div class="event-roster-summary"><b>'+registrations.length+'</b> familias inscritas'+
-    '<b>'+adults+'</b> adultos'+
-    '<b>'+children+'</b> menores'+
-    '<b>'+(adults+children)+'</b> personas en total</div>';
+  const summaryHtml=summary([
+    ['Familias inscritas',registrations.length],
+    [isParentsSchool?'Adultos asistentes':'Adultos inscritos',adults],
+    [isParentsSchool?'Niños/as en ludoteca':'Menores inscritos',children],
+    ['Total de personas',adults+children]
+  ]);
   const explanation=mode==='check'
     ? 'Control de asistencia por familias. Marque la casilla de cada persona al comprobar su presencia. Las casillas se imprimen vacías.'
     : 'Relación de personas inscritas. Los teléfonos y correos se muestran solo cuando están disponibles en la ficha del adulto.';
