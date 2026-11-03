@@ -7,6 +7,7 @@ import { backendApi } from '../services/backendApi';
 import { EventDetail, EventRegistrationRecord, EventSummary, Family, SystemSettings } from '../types/family';
 import { createEventParticipantsPdfArtifact, createEventRegistrationsPdfArtifact, PdfArtifact } from '../utils/pdfExportUtils';
 import { PdfPreviewModal } from './PdfPreviewModal';
+import { EventWorkspace } from './EventWorkspace';
 import QRCode from 'qrcode';
 
 interface Props {
@@ -271,6 +272,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       else await backendApi.createEvent(payload);
       setDraft(null);
       await onReload();
+      if(draft.id) await loadDetail(draft.id);
       onNotify('success',draft.id?'Evento actualizado':'Evento creado');
     }catch(error:any){
       onNotify('error','No se pudo guardar el evento',error?.message);
@@ -456,287 +458,37 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   };
 
   if(detail){
-    const summary=events.find(e=>e.id===detail.id);
-    const familyRate=totals.activeFamilies ? Math.round((selectedFamilies.size/totals.activeFamilies)*1000)/10 : 0;
-    const censusRate=totals.censusPeople ? Math.round((selectedParticipantCount/totals.censusPeople)*1000)/10 : 0;
-    const confirmedRegistrations=detail.registrations.filter((registration)=>registration.status==='confirmed');
-    const waitlistRegistrations=detail.registrations.filter((registration)=>registration.status==='waitlist');
-    const cancelledRegistrations=detail.registrations.filter((registration)=>registration.status==='cancelled');
-    const registeredParticipants=confirmedRegistrations.reduce((total,registration)=>total+registration.attendees.length,0);
-    const registrationLink=`${window.location.origin}/inscripcion/${detail.registrationToken}`;
-    const deadlineTime=detail.registrationDeadline ? new Date(detail.registrationDeadline).getTime() : new Date(detail.eventDate+'T23:59:59').getTime();
-    const registrationOpen=detail.registrationEnabled && Number.isFinite(deadlineTime) && deadlineTime>=Date.now();
-    return <div className="space-y-4">
-      <section className="overflow-hidden rounded-[30px] border border-white/70 bg-white/90 shadow-[0_18px_50px_rgba(71,85,105,.09)]">
-        <div className="grid lg:grid-cols-[280px_1fr]">
-          <div className="relative min-h-[210px] bg-gradient-to-br from-indigo-100 via-violet-100 to-rose-100">
-            {detail.imageDataUrl ? <img src={detail.imageDataUrl} alt="" className="absolute inset-0 h-full w-full object-cover"/> :
-              <div className="absolute inset-0 flex items-center justify-center"><CalendarDays size={52} className="text-indigo-300"/></div>}
-            <button type="button" onClick={()=>{setDetail(null);setSelectedId(null);}} className="absolute left-3 top-3 flex min-h-10 items-center gap-2 rounded-2xl bg-white/90 px-3 text-xs font-black text-slate-700 shadow-sm backdrop-blur"><ChevronLeft size={16}/> Eventos</button>
-          </div>
-          <div className="p-5 sm:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[.2em] text-indigo-500"><span>{dateLabel(detail.eventDate)}</span><span className="rounded-full bg-indigo-50 px-2 py-1 tracking-normal text-indigo-700">Curso {detail.academicYear}</span></div>
-                <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{detail.title}</h1>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{detail.description || 'Sin descripción.'}</p>
-              </div>
-              {canEdit&&<div className="flex gap-2">
-                <button type="button" onClick={()=>setDraft({
-                  id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,
-                  description:detail.description,imageDataUrl:detail.imageDataUrl,
-                  registrationEnabled:detail.registrationEnabled,
-                  registrationDeadline:toLocalDateTimeInput(detail.registrationDeadline),
-                  registrationCapacity:detail.registrationCapacity,
-                  maxAttendeesPerFamily:detail.maxAttendeesPerFamily,
-                  registrationMessage:detail.registrationMessage||'',
-                  registrationAudience:detail.registrationAudience||'members_only'
-                })} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600"><Pencil size={14}/> Editar</button>
-                {canDelete&&<button type="button" onClick={()=>void removeEvent()} className="min-h-10 rounded-2xl border border-rose-200 bg-white px-3 text-rose-600"><Trash2 size={15}/></button>}
-              </div>}
-            </div>
-            <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ['Familias',selectedFamilies.size,Users],
-                ['Participantes',selectedParticipantCount,UserRound],
-                ['% familias',`${familyRate}%`,Percent],
-                ['% censo',`${censusRate}%`,BarChart3],
-              ].map(([label,value,Icon]:any)=><div key={label} className="rounded-[20px] border border-white bg-gradient-to-br from-white to-slate-50 p-3.5 shadow-sm">
-                <Icon size={16} className="text-indigo-400"/>
-                <div className="mt-3 text-2xl font-black tracking-tight text-slate-950">{value}</div>
-                <div className="mt-1 text-[10px] font-bold text-slate-400">{label}</div>
-              </div>)}
-            </div>
-            {summary&&<div className="mt-3 text-[10px] font-semibold text-slate-400">Referencia guardada: {summary.familyCount} familias · {summary.participantCount} participantes</div>}
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-500">Inscripciones del evento</div>
-              <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${!detail.registrationEnabled?'bg-slate-100 text-slate-500':registrationOpen?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
-                {!detail.registrationEnabled?'Desactivadas':registrationOpen?'Abiertas':'Cerradas'}
-              </span>
-              <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[9px] font-black uppercase text-violet-700">{detail.registrationAudience==='public'?'Socios y no socios':'Solo socios'}</span>
-            </div>
-            <h2 className="mt-1 text-xl font-black text-slate-950">Formulario público para familias</h2>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">{registrationOpen
-              ? 'El formulario está abierto y admite nuevas inscripciones de familias socias activas.'
-              : detail.registrationEnabled
-                ? 'El plazo configurado ha finalizado. Pulse “Abrir inscripciones” para reabrirlo.'
-                : 'Las inscripciones están cerradas. La página pública puede consultarse, pero no admite nuevas altas.'}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {canEdit&&<button type="button" disabled={savingEvent} onClick={()=>void toggleRegistrationState()} className={`flex min-h-11 items-center gap-2 rounded-2xl px-4 text-xs font-black text-white shadow-sm disabled:opacity-50 ${registrationOpen?'bg-rose-600 hover:bg-rose-700':'bg-emerald-600 hover:bg-emerald-700'}`}>
-              {registrationOpen?'Cerrar inscripciones':'Abrir inscripciones'}
-            </button>}
-            <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-600 shadow-sm"><Copy size={14}/> Copiar enlace</button>
-            <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-11 items-center gap-2 rounded-2xl bg-indigo-600 px-3 text-xs font-extrabold text-white shadow-sm"><ExternalLink size={14}/> Ver página pública</a>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-          <div className="rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white p-4">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-white p-2.5 text-indigo-600 shadow-sm"><Link2 size={17}/></div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[9px] font-black uppercase tracking-wider text-indigo-500">Enlace público de inscripción</div>
-                <div className="mt-1 break-all font-mono text-[10px] leading-5 text-indigo-950">{registrationLink}</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button type="button" onClick={()=>void copyRegistrationLink()} className="flex min-h-9 items-center gap-2 rounded-xl border border-indigo-100 bg-white px-3 text-[10px] font-extrabold text-indigo-700 shadow-sm"><Copy size={13}/> Copiar enlace</button>
-                  <a href={registrationLink} target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2 rounded-xl bg-indigo-600 px-3 text-[10px] font-extrabold text-white shadow-sm"><ExternalLink size={13}/> Abrir formulario</a>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-slate-100 bg-white p-4 text-center shadow-sm">
-            <div className="flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><QrCode size={14}/> QR de inscripción</div>
-            <div className="mx-auto mt-3 flex h-36 w-36 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-white p-2">
-              {registrationQrPng?<img src={registrationQrPng} alt={`QR de inscripción para ${detail.title}`} className="h-full w-full object-contain"/>:<QrCode size={48} className="text-slate-200"/>}
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" disabled={!registrationQrPng} onClick={()=>downloadRegistrationQr('png')} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-extrabold text-slate-600 disabled:opacity-40"><Download size={12}/> PNG</button>
-              <button type="button" disabled={!registrationQrSvg} onClick={()=>downloadRegistrationQr('svg')} className="flex min-h-9 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2 text-[9px] font-extrabold text-slate-600 disabled:opacity-40"><Download size={12}/> SVG</button>
-            </div>
-            <div className="mt-2 text-[9px] leading-4 text-slate-400">El mismo QR sigue siendo válido aunque abra o cierre las inscripciones.</div>
-          </div>
-        </div>
-
-        {(detail.registrationEnabled || detail.registrations.length>0) ? <>
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-[20px] bg-emerald-50 p-3.5"><Users size={15} className="text-emerald-600"/><div className="mt-2 text-2xl font-black text-slate-950">{confirmedRegistrations.length}</div><div className="text-[10px] font-bold text-emerald-700">Familias confirmadas</div></div>
-            <div className="rounded-[20px] bg-indigo-50 p-3.5"><UserRound size={15} className="text-indigo-600"/><div className="mt-2 text-2xl font-black text-slate-950">{registeredParticipants}</div><div className="text-[10px] font-bold text-indigo-700">Personas inscritas</div></div>
-            <div className="rounded-[20px] bg-amber-50 p-3.5"><Clock3 size={15} className="text-amber-600"/><div className="mt-2 text-2xl font-black text-slate-950">{waitlistRegistrations.length}</div><div className="text-[10px] font-bold text-amber-700">Familias en espera</div></div>
-            <div className="rounded-[20px] bg-slate-50 p-3.5"><TicketCheck size={15} className="text-slate-500"/><div className="mt-2 text-2xl font-black text-slate-950">{detail.registrationCapacity??'∞'}</div><div className="text-[10px] font-bold text-slate-500">Aforo máximo</div></div>
-          </div>
-
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Solicitudes recibidas</div>
-              <div className="mt-1 text-xs text-slate-500">{detail.registrations.length-cancelledRegistrations.length} activas · {cancelledRegistrations.length} canceladas</div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={downloadRegistrationsPdf} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700"><FileDown size={15}/> Informe de inscritos y familias</button>
-              {canEdit&&confirmedRegistrations.length>0&&<button type="button" disabled={savingAttendance} onClick={()=>void loadConfirmedRegistrationsAsAttendance()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-3 text-xs font-extrabold text-indigo-700 disabled:opacity-50"><ClipboardCheck size={15}/> Cargar confirmados como asistencia</button>}
-            </div>
-          </div>
-
-          <div className="mt-3 space-y-2">
-            {detail.registrations
-              .slice()
-              .sort((a,b)=>{
-                const rank=(status:string)=>status==='confirmed'?0:status==='waitlist'?1:2;
-                return rank(a.status)-rank(b.status) || a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'});
-              })
-              .map((registration)=><div key={registration.id} className={`rounded-[22px] border p-3.5 ${registration.status==='cancelled'?'border-slate-100 bg-slate-50 opacity-60':'border-slate-100 bg-white'}`}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><strong className="text-xs font-black text-slate-900">Familia {registration.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{registration.membershipNumber}</span></div>
-                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">{registration.registrationKind==='public'?'Socio no activo o alta provisional':'Familia socia activa'}</div>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${registration.status==='confirmed'?'bg-emerald-50 text-emerald-700':registration.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500'}`}>
-                    {registration.status==='confirmed'?'Confirmada':registration.status==='waitlist'?'Espera':'Cancelada'}
-                  </span>
-                </div>
-
-                <EventRegistrationFamilyRoster
-                  registration={registration}
-                  family={families.find(family=>family.id===registration.familyId)}
-                  canEdit={canEdit}
-                  onRemove={attendee=>void removeRegisteredAttendee(registration,attendee)}
-                />
-
-                {canEdit&&registration.status!=='cancelled'&&<div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
-                  <button type="button" onClick={()=>void cancelFamilyRegistration(registration)} className="flex min-h-9 items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 text-[10px] font-extrabold text-rose-600 transition hover:bg-rose-50"><Trash2 size={13}/> Dar de baja a toda la familia</button>
-                </div>}
-              </div>)}
-            {!detail.registrations.length&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-7 text-center text-xs text-slate-400">Aún no se ha recibido ninguna inscripción.</div>}
-          </div>
-        </> : <div className="mt-5 rounded-[22px] border-2 border-dashed border-slate-200 p-6 text-center">
-          <div className="text-sm font-black text-slate-600">Inscripciones cerradas</div>
-          <div className="mt-1 text-xs text-slate-400">Configure aforo, plazo y condiciones desde “Editar” y pulse “Abrir inscripciones” cuando quiera comenzar a admitir familias.</div>
-        </div>}
-      </section>
-
-      {!editingAttendance ? (
-        <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Participación guardada</div>
-              <h2 className="mt-1 text-xl font-black text-slate-950">Familias y asistentes</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Vista operativa del evento: solo aparecen las familias que participan y sus miembros asistentes.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {!!detail.attendees.length&&<button type="button" onClick={downloadParticipantsPdf} className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-extrabold text-slate-700 shadow-sm"><FileDown size={15}/> Informe de participantes</button>}
-              {canEdit&&<button type="button" onClick={()=>setEditingAttendance(true)} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white"><Pencil size={15}/> Editar participación</button>}
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {Array.from(selectedFamilies)
-              .map((familyId)=>families.find((family)=>family.id===familyId))
-              .filter((family):family is Family=>Boolean(family))
-              .sort((a,b)=>a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'}))
-              .map((family)=>{
-                const keys=selectedPeople[family.id]||new Set<string>();
-                const guardians=family.guardians.filter((guardian)=>keys.has(personKey('guardian',guardian.id)));
-                const students=family.students.filter((student)=>keys.has(personKey('student',student.id)));
-                return <div key={family.id} className="rounded-[24px] border border-slate-100 bg-gradient-to-br from-slate-50 to-white p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <strong className="text-sm font-black text-slate-900">Familia {family.familyName}</strong>
-                        <span className="font-mono text-[9px] font-bold text-slate-400">{family.membershipNumber}</span>
-                      </div>
-                      <div className="mt-1 text-[10px] font-semibold text-slate-400">{keys.size} participante{keys.size===1?'':'s'}</div>
-                    </div>
-                    <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">{keys.size}</span>
-                  </div>
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
-                    <div className="rounded-2xl bg-white p-3 shadow-sm">
-                      <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><UserRound size={13}/> Padres / tutores</div>
-                      <div className="space-y-1.5">
-                        {guardians.map((guardian)=><div key={guardian.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><span className="h-1.5 w-1.5 rounded-full bg-indigo-400"/><span className="truncate">{guardian.fullName}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">{guardian.relationship.replace('_',' ')}</span></div>)}
-                        {!guardians.length&&<div className="text-[10px] text-slate-400">No participa ningún adulto.</div>}
-                      </div>
-                    </div>
-                    <div className="rounded-2xl bg-white p-3 shadow-sm">
-                      <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><Baby size={13}/> Hijos/as</div>
-                      <div className="space-y-1.5">
-                        {students.map((student)=><div key={student.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><span className="h-1.5 w-1.5 rounded-full bg-rose-400"/><span className="truncate">{student.firstName} {student.lastName}</span><span className="ml-auto shrink-0 text-[9px] text-slate-400">{student.className||'Sin curso'}</span></div>)}
-                        {!students.length&&<div className="text-[10px] text-slate-400">No participa ningún hijo/a.</div>}
-                      </div>
-                    </div>
-                  </div>
-                </div>;
-              })}
-            {!selectedFamilies.size&&<div className="rounded-[22px] border-2 border-dashed border-slate-200 p-8 text-center">
-              <div className="text-sm font-black text-slate-500">Aún no hay participación guardada</div>
-              <div className="mt-1 text-xs text-slate-400">Seleccione las familias y asistentes para comenzar.</div>
-              {canEdit&&<button type="button" onClick={()=>setEditingAttendance(true)} className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-xs font-extrabold text-white">Configurar participación</button>}
-            </div>}
-          </div>
-        </section>
-      ) : (
-        <section className="rounded-[30px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,.08)] sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Editar participación</div>
-              <h2 className="mt-1 text-xl font-black text-slate-950">Seleccionar familias y asistentes</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Al marcar una familia se seleccionan automáticamente todos sus miembros. Después solo tiene que desmarcar a quien no participe.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {!!detail.familyIds.length&&<button type="button" onClick={()=>{void loadDetail(detail.id);}} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600">Cancelar cambios</button>}
-              {canEdit&&<button type="button" disabled={savingAttendance} onClick={()=>void saveAttendance()} className="flex min-h-11 items-center gap-2 rounded-2xl bg-slate-950 px-4 text-xs font-extrabold text-white disabled:opacity-50"><Save size={15}/>{savingAttendance?'Guardando…':'Guardar participación'}</button>}
-            </div>
-          </div>
-          <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
-            <label className="relative"><Search size={16} className="absolute left-4 top-3.5 text-slate-400"/><input value={familyQuery} onChange={e=>setFamilyQuery(e.target.value)} placeholder="Buscar familia o miembro…" className="min-h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm outline-none focus:border-indigo-300"/></label>
-            <label className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600"><input type="checkbox" checked={onlySelected} onChange={e=>setOnlySelected(e.target.checked)}/> Solo seleccionadas</label>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            {filteredFamilies.map(family=>{
-              const checked=selectedFamilies.has(family.id);
-              const people=selectedPeople[family.id]||new Set<string>();
-              return <div key={family.id} className={`rounded-[22px] border p-3 transition ${checked?'border-indigo-200 bg-indigo-50/45':'border-slate-100 bg-slate-50/65'}`}>
-                <div className="flex items-center gap-3">
-                  <input disabled={!canEdit} type="checkbox" checked={checked} onChange={()=>toggleFamily(family.id)} className="h-4 w-4 rounded border-slate-300"/>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><strong className="truncate text-xs text-slate-800">Familia {family.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{family.membershipNumber}</span></div>
-                    <div className="mt-0.5 text-[10px] text-slate-400">{family.guardians.length} adulto(s) · {family.students.length} hijo(s) · {people.size} participante(s)</div>
-                  </div>
-                  <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${family.isActiveThisYear?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>{family.isActiveThisYear?'Activa':'Inactiva'}</span>
-                </div>
-                {checked&&<div className="mt-3 grid gap-2 border-t border-indigo-100 pt-3 md:grid-cols-2">
-                  <div className="rounded-2xl bg-white/80 p-3">
-                    <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><UserRound size={13}/> Padres / tutores</div>
-                    <div className="space-y-1.5">
-                      {family.guardians.map(g=>{const key=personKey('guardian',g.id);return <label key={g.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{g.fullName}</span><span className="ml-auto shrink-0 text-[9px] font-bold uppercase text-slate-400">{g.relationship.replace('_',' ')}</span></label>})}
-                      {!family.guardians.length&&<div className="text-[10px] text-slate-400">Sin adultos registrados.</div>}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl bg-white/80 p-3">
-                    <div className="mb-2 flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-slate-400"><Baby size={13}/> Hijos/as</div>
-                    <div className="space-y-1.5">
-                      {family.students.map(s=>{const key=personKey('student',s.id);return <label key={s.id} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700"><input disabled={!canEdit} type="checkbox" checked={people.has(key)} onChange={()=>togglePerson(family.id,key)}/><span className="truncate">{s.firstName} {s.lastName}</span><span className="ml-auto shrink-0 text-[9px] text-slate-400">{s.className||'Sin curso'}</span></label>})}
-                      {!family.students.length&&<div className="text-[10px] text-slate-400">Sin hijos/as registrados.</div>}
-                    </div>
-                  </div>
-                </div>}
-              </div>;
-            })}
-          </div>
-        </section>
-      )}
-
+    return <>
+      <EventWorkspace
+        key={detail.id}
+        detail={detail}
+        families={families}
+        settings={settings}
+        canEdit={canEdit}
+        canDelete={canDelete}
+        onBack={()=>{setDetail(null);setSelectedId(null);setDraft(null);}}
+        onEditEvent={()=>setDraft({
+          id:detail.id,title:detail.title,eventDate:detail.eventDate,academicYear:detail.academicYear,
+          description:detail.description,imageDataUrl:detail.imageDataUrl,
+          registrationEnabled:detail.registrationEnabled,
+          registrationDeadline:toLocalDateTimeInput(detail.registrationDeadline),
+          registrationCapacity:detail.registrationCapacity,
+          maxAttendeesPerFamily:detail.maxAttendeesPerFamily,
+          registrationMessage:detail.registrationMessage||'',
+          registrationAudience:detail.registrationAudience||'members_only'
+        })}
+        onDeleteEvent={()=>void removeEvent()}
+        onToggleRegistration={toggleRegistrationState}
+        onCopyLink={copyRegistrationLink}
+        onDownloadQr={downloadRegistrationQr}
+        qrPng={registrationQrPng}
+        qrSvg={registrationQrSvg}
+        onReload={onReload}
+        onRefresh={()=>loadDetail(detail.id)}
+        onNotify={onNotify}
+      />
       {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
-      {printPreview&&<PdfPreviewModal artifact={printPreview} onClose={()=>setPrintPreview(null)}/>}
-    </div>;
+    </>;
   }
 
   return <div className="space-y-4">
