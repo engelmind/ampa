@@ -38,9 +38,9 @@ function PageNav({page,total,onChange,label}:{page:number;total:number;onChange:
   </div>;
 }
 
-function MemberPicker({family,selected,onChange,readonly=false,formChildren=[],extra=[]}:{
+function MemberPicker({family,selected,onChange,readonly=false,formChildren=[],extra=[],parentsSchool=false}:{
   family:Family;selected:Set<string>;onChange:(next:Set<string>)=>void;readonly?:boolean;
-  formChildren?:EventRegistrationRecord['formChildren'];extra?:Array<{personType:PersonType;personId:string;participantName:string}>
+  formChildren?:EventRegistrationRecord['formChildren'];extra?:Array<{personType:PersonType;personId:string;participantName:string}>;parentsSchool?:boolean
 }){
   const declared=new Set((formChildren||[]).map(c=>c.studentId));
   const allKnown=[
@@ -57,7 +57,7 @@ function MemberPicker({family,selected,onChange,readonly=false,formChildren=[],e
     if(next.has(key)) next.delete(key); else next.add(key);
     onChange(next);
   };
-  const groups=[{title:'Padres, madres y tutores',child:false},{title:'Hijos/as',child:true}];
+  const groups=[{title:parentsSchool?'Adultos · Escuela de Padres':'Padres, madres y tutores',child:false},{title:parentsSchool?'Niños/as · Ludoteca':'Hijos/as',child:true}];
   return <div className="space-y-3">
     {!readonly&&<div className="flex flex-wrap gap-2">
       <button type="button" onClick={()=>onChange(new Set(people.map(p=>p.key)))} className="rounded-xl bg-indigo-50 px-3 py-2 text-[10px] font-bold text-indigo-700">Seleccionar todos</button>
@@ -75,7 +75,7 @@ function MemberPicker({family,selected,onChange,readonly=false,formChildren=[],e
           {people.filter(p=>p.isChild===group.child).map(p=><label key={p.key} className="flex cursor-pointer items-start gap-2 rounded-xl border border-slate-100 bg-white px-2.5 py-2 text-[11px]">
             <input type="checkbox" disabled={readonly} checked={selected.has(p.key)} onChange={()=>toggle(p.key)} className="mt-0.5 h-4 w-4 accent-indigo-600"/>
             <span className="min-w-0 flex-1"><strong className="block font-semibold text-slate-800">{p.name}</strong><span className="text-[9px] text-slate-400">{p.role}</span></span>
-            {p.declared&&<span className="shrink-0 rounded-md bg-rose-50 px-1.5 py-1 text-[8px] font-bold text-rose-700">Formulario</span>}
+
           </label>)}
           {!people.some(p=>p.isChild===group.child)&&<div className="text-[10px] text-slate-400">Sin miembros en el directorio</div>}
         </div>
@@ -140,6 +140,9 @@ export function EventWorkspace({
   const reserved=confirmed.reduce((n,r)=>n+r.attendees.length,0);
   const registrationOpen=detail.registrationEnabled && (!detail.registrationDeadline || new Date(detail.registrationDeadline).getTime()>=Date.now());
   const capacity=detail.registrationCapacity;
+  const isParentsSchool=detail.title.toLocaleLowerCase('es').includes('escuela de padres');
+  const enrolledAdults=confirmed.reduce((n,r)=>n+r.attendees.filter(a=>a.personType==='guardian').length,0);
+  const enrolledChildren=confirmed.reduce((n,r)=>n+r.attendees.filter(a=>a.personType==='student').length,0);
   const busyRefresh=async()=>{await onRefresh();await onReload();};
   const now=new Date();
   const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
@@ -222,9 +225,9 @@ export function EventWorkspace({
     finally{setBusy(false)}
   };
 
-  const openRegistrationReport=()=>{
+  const openRegistrationReport=(mode:'simple'|'check')=>{
     if(!active.length){onNotify('info','No hay inscripciones activas');return}
-    setPrintPreview(createEventRegistrationsPdfArtifact(detail,families,settings));
+    setPrintPreview(createEventRegistrationsPdfArtifact(detail,families,settings,mode));
   };
   const openAttendanceReport=()=>{
     if(!detail.attendees.length){onNotify('info','No hay asistencia efectiva registrada');return}
@@ -256,7 +259,7 @@ export function EventWorkspace({
       <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4">
         {[
           {label:'Familias inscritas',value:confirmed.length,icon:Users},
-          {label:'Plazas confirmadas',value:reserved,icon:TicketCheck},
+          {label:'Personas inscritas',value:reserved,icon:TicketCheck},
           {label:pendingVerification?'Familias precargadas':'Familias con asistencia',value:attendanceMap.size,icon:ClipboardCheck},
           {label:pendingVerification?'Personas precargadas':'Asistentes registrados',value:detail.attendees.length,icon:UserRound}
         ].map(k=><div key={k.label} className="bg-white px-4 py-3">
@@ -276,7 +279,7 @@ export function EventWorkspace({
         <button type="button" onClick={()=>chooseTab('registrations')} className="rounded-[24px] border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-5 text-left shadow-sm transition hover:border-indigo-300">
           <div className="flex items-center gap-2 text-[11px] font-black text-indigo-700"><Users size={17}/> Inscripciones</div>
           <p className="mt-2 text-2xl font-black text-slate-900">{active.length} <span className="text-xs text-slate-500">familias</span></p>
-          <p className="mt-1 text-[11px] text-slate-500">{reserved} plazas confirmadas · {waiting.length} familias en espera · {cancelled.length} bajas</p>
+          <p className="mt-1 text-[11px] text-slate-500">{isParentsSchool ? enrolledAdults+' adultos · '+enrolledChildren+' niños/as de ludoteca' : reserved+' personas inscritas'} · {waiting.length} familias en espera · {cancelled.length} bajas</p>
           <p className="mt-4 text-[11px] font-extrabold text-indigo-700">Buscar, añadir y modificar familias</p>
         </button>
         <button type="button" onClick={()=>chooseTab('attendance')} className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-5 text-left shadow-sm transition hover:border-emerald-300">
@@ -299,9 +302,10 @@ export function EventWorkspace({
 
     {tab==='registrations'&&<section className="rounded-[28px] border border-white/70 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-lg font-black text-slate-950">Inscripciones</h2><p className="text-[11px] text-slate-500">Registro de reservas: altas, bajas, modificaciones y espera. No registra asistencia.</p></div>
+        <div><h2 className="text-lg font-black text-slate-950">Inscripciones</h2><p className="text-[11px] text-slate-500">{isParentsSchool ? enrolledAdults+' adultos para la sesión · '+enrolledChildren+' niños/as de ludoteca.':'Registro de personas inscritas.'} Altas, bajas y modificaciones sin alterar la asistencia.</p></div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={openRegistrationReport} className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><FileDown size={14}/> PDF de inscripciones</button>
+          <button type="button" onClick={()=>openRegistrationReport('simple')} className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><FileDown size={14}/> Lista simple (PDF)</button>
+          <button type="button" onClick={()=>openRegistrationReport('check')} className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><ClipboardCheck size={14}/> Lista Check (PDF)</button>
           {canEdit&&<button type="button" onClick={()=>{setAddingFamily(true);setRegEditorId(null);setFamilyPick('')}} className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2.5 text-[11px] font-bold text-white"><Plus size={14}/> Añadir familia</button>}
         </div>
       </div>
@@ -319,7 +323,7 @@ export function EventWorkspace({
 
       {regEditorId && (!currentReg || (currentReg.status==='cancelled' && !listedPage.some(item=>item.familyId===regEditorId))) && currentRegFamily&&<div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4">
         <div className="mb-3 flex items-center justify-between"><div><h3 className="text-xs font-black text-slate-800">{currentReg?.status==='cancelled'?'Reactivar inscripción':'Nueva inscripción'} · {currentRegFamily.familyName}</h3><p className="mt-1 text-[10px] text-slate-500">Seleccione quién ocupará plaza. Los demás miembros quedan vinculados solo en el directorio.</p></div><button type="button" onClick={()=>setRegEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
-        <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={currentReg?.formChildren} extra={currentReg?.attendees}/>
+        <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={currentReg?.formChildren} extra={currentReg?.attendees} parentsSchool={isParentsSchool}/>
         <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={()=>setRegEditorId(null)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600">Cancelar</button><button type="button" disabled={busy||!regSelected.size} onClick={()=>void saveRegistration()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-[11px] font-bold text-white disabled:opacity-50"><Plus size={12} className="inline"/> Confirmar inscripción</button></div>
       </div>}
 
@@ -338,7 +342,7 @@ export function EventWorkspace({
           {listedPage.map(r=><div key={r.id}>
             <div className="grid gap-2 px-4 py-3 transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_95px_90px_96px] sm:items-center">
               <div className="min-w-0"><div className="truncate text-xs font-extrabold text-slate-800">{r.familyName}</div><div className="font-mono text-[9px] text-slate-400">{r.membershipNumber}</div></div>
-              <div className="text-[11px] font-black text-slate-700">{r.status==='cancelled'?'—':r.attendees.length} <span className="font-normal text-slate-400">{r.status==='cancelled'?'histórico':'plazas'}</span></div>
+              <div className="text-[11px] font-black text-slate-700">{r.status==='cancelled'?'—':r.attendees.length} <span className="font-normal text-slate-400">{r.status==='cancelled'?'histórico':'personas'}</span></div>
               <div><span className={'rounded-lg px-2 py-1 text-[9px] font-bold '+(r.status==='confirmed'?'bg-emerald-50 text-emerald-700':r.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500')}>{labelStatus(r.status)}</span></div>
               <div className="sm:text-right"><button type="button" aria-expanded={regEditorId===r.familyId} onClick={()=>regEditorId===r.familyId?setRegEditorId(null):openRegistration(r.familyId)} className="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-[10px] font-black text-indigo-700">{regEditorId===r.familyId?'Cerrar':'Gestionar'}</button></div>
             </div>
@@ -347,7 +351,7 @@ export function EventWorkspace({
                 <div><h3 className="text-xs font-black text-slate-800">{r.familyName} · Edición individual</h3><p className="mt-1 text-[10px] text-slate-500">Marque las personas que tienen plaza. Los hijos declarados en el formulario se identifican con su etiqueta, pero no se seleccionan automáticamente.</p></div>
                 <button type="button" aria-label="Cerrar edición" onClick={()=>setRegEditorId(null)}><X size={16}/></button>
               </div>
-              <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={r.formChildren} extra={r.attendees}/>
+              <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={r.formChildren} extra={r.attendees} parentsSchool={isParentsSchool}/>
               <div className="mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 pt-3">
                 {canEdit&&r.status!=='cancelled'&&<button type="button" disabled={busy} onClick={()=>void cancelRegistration(r)} className="flex min-h-9 items-center gap-1 rounded-xl border border-rose-200 px-3 text-[10px] font-bold text-rose-700 disabled:opacity-50"><Trash2 size={13}/> Baja familiar</button>}
                 {canEdit&&<button type="button" disabled={busy} onClick={()=>void saveRegistration()} className="flex min-h-9 items-center gap-1 rounded-xl bg-indigo-600 px-4 text-[10px] font-bold text-white disabled:opacity-50"><Check size={14}/>{busy?'Guardando…':r.status==='cancelled'?'Reactivar y guardar':'Guardar cambios'}</button>}
@@ -391,7 +395,7 @@ export function EventWorkspace({
               </div>
               {attEditorId===f.id && currentAttFamily&&<div className="border-t border-emerald-100 bg-emerald-50/25 p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><strong className="text-xs text-slate-800">Asistencia · {f.familyName}</strong><p className="mt-1 text-[10px] text-slate-500">Marque únicamente las personas cuya presencia se ha comprobado.</p></div><button type="button" onClick={()=>setAttEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
-                <MemberPicker family={currentAttFamily} selected={attSelected} onChange={setAttSelected} readonly={!canEdit||busy} formChildren={reg?.formChildren} extra={[...(reg?.attendees||[]),...detail.attendees.filter(a=>a.familyId===f.id)]}/>
+                <MemberPicker family={currentAttFamily} selected={attSelected} onChange={setAttSelected} readonly={!canEdit||busy} formChildren={reg?.formChildren} extra={[...(reg?.attendees||[]),...detail.attendees.filter(a=>a.familyId===f.id)]} parentsSchool={isParentsSchool}/>
                 <div className="mt-3 flex justify-end gap-2 border-t border-slate-200 pt-3"><button type="button" onClick={()=>setAttEditorId(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600">Cancelar</button>{canEdit&&<button type="button" disabled={busy||(!attSelected.size&&!selected)} onClick={()=>void saveAttendance()} className="rounded-xl bg-emerald-700 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-40">{busy?'Guardando…':attSelected.size?'Guardar asistencia':'Retirar asistencia'}</button>}</div>
               </div>}
             </div>;
