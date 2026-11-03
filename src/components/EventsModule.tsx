@@ -135,7 +135,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       setDetail(response.event);
       setSelectedId(id);
       setSelectedFamilies(new Set(response.event.familyIds));
-      setEditingAttendance(response.event.familyIds.length === 0);
+      setEditingAttendance(false);
       setFamilyQuery('');
       setOnlySelected(false);
       const people:Record<string,Set<string>>={};
@@ -781,7 +781,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · familias</div></div>
               <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · personas</div></div>
             </div>
-            {event.registrationEnabled&&<div className="mt-2 rounded-2xl bg-indigo-50 px-3 py-2 text-[9px] font-bold text-indigo-700">Inscritos: {event.registeredFamilyCount} familias · {event.registeredParticipantCount} personas{event.waitlistFamilyCount?' · '+event.waitlistFamilyCount+' en espera':''}</div>}
+            {(event.registrationEnabled || event.registeredFamilyCount>0)&&<div className="mt-2 rounded-2xl bg-indigo-50 px-3 py-2 text-[9px] font-bold text-indigo-700">Inscritos: {event.registeredFamilyCount} familias · {event.registeredParticipantCount} personas{event.waitlistFamilyCount?' · '+event.waitlistFamilyCount+' en espera':''}</div>}
           </div>
         </button>)}
       </div>
@@ -792,7 +792,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             <span className="text-[10px] font-black text-indigo-600">{dateLabel(event.eventDate)}</span>
             <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-900">{event.title}</span><span className="block truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</span></span>
             <span className="w-fit rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-black text-indigo-700">{event.academicYear}</span>
-            <span className="text-[10px] font-bold text-slate-500">{event.registrationEnabled ? event.registeredFamilyCount+' inscr. · '+event.registeredParticipantCount+' pers.' : event.familyCount+' fam. · '+event.participantCount+' pers.'}</span>
+            <span className="text-[10px] font-bold text-slate-500">{(event.registrationEnabled || event.registeredFamilyCount>0) ? event.registeredFamilyCount+' inscr. · '+event.registeredParticipantCount+' pers.' : event.familyCount+' fam. · '+event.participantCount+' pers.'}</span>
           </button>)}
         </div>
       </div>
@@ -805,9 +805,9 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               <td className="whitespace-nowrap px-4 py-3 text-[11px] font-bold text-indigo-600">{dateLabel(event.eventDate)}</td>
               <td className="max-w-[360px] px-4 py-3"><div className="truncate text-xs font-black text-slate-900">{event.title}</div><div className="truncate text-[10px] text-slate-400">{event.description||'Sin descripción'}</div></td>
               <td className="whitespace-nowrap px-4 py-3 text-[10px] font-black text-slate-600">{event.academicYear}</td>
-              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.registrationEnabled?event.registeredParticipantCount:'—'}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{(event.registrationEnabled || event.registeredParticipantCount>0)?event.registeredParticipantCount:'—'}</td>
               <td className="px-4 py-3 text-right text-xs font-bold text-slate-700">{event.participantCount}</td>
-              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{event.registrationEnabled?event.waitlistFamilyCount:'—'}</td>
+              <td className="px-4 py-3 text-right text-xs font-bold text-slate-500">{(event.registrationEnabled || event.registeredFamilyCount>0)?event.waitlistFamilyCount:'—'}</td>
             </tr>)}
           </tbody>
         </table>
