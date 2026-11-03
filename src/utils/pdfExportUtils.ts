@@ -3,7 +3,7 @@ import { renderMembershipCardPng } from './membershipCardRenderer';
 import { EventDetail, Family, SystemSettings } from '../types/family';
 import {
   HtmlReportKind, PrintReportOptions, renderFamiliesHtml,
-  renderEventParticipantsHtml, renderReportHtml
+  renderEventParticipantsHtml, renderEventRegistrationsHtml, renderReportHtml
 } from './htmlReportUtils';
 
 export interface PdfReportOptions extends PrintReportOptions {}
@@ -97,6 +97,21 @@ export function createEventParticipantsPdfArtifact(
     'participantes_' + safeFilenamePart(event.title) + '_' + (event.eventDate || 'sin_fecha') + '.pdf',
     'Participantes · ' + event.title,
     uniqueFamilies + ' familias · ' + event.attendees.length + ' participantes · HTML listo para impresión'
+  );
+}
+
+
+/** Relación de familias inscritas con sus adultos e hijos. No implica asistencia efectiva. */
+export function createEventRegistrationsPdfArtifact(
+  event: EventDetail, families: Family[], settings: SystemSettings
+): PdfArtifact {
+  const registrations=event.registrations.filter(registration=>registration.status!=='cancelled');
+  const total=registrations.reduce((n,registration)=>n+registration.attendees.length,0);
+  return htmlArtifact(
+    renderEventRegistrationsHtml(event,families,settings),
+    'inscripciones_' + safeFilenamePart(event.title) + '_' + (event.eventDate || 'sin_fecha') + '.pdf',
+    'Inscripciones · ' + event.title,
+    registrations.length+' familias · '+total+' personas inscritas · Hijos no inscritos visibles como contexto familiar'
   );
 }
 
