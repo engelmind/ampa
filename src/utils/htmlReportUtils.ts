@@ -194,6 +194,10 @@ const stylesheet = (landscape: boolean): string => [
   '.event-roster-title strong{font-size:9pt;color:#0f172a;line-height:1.24}',
   '.event-roster-title span{font-size:7.2pt;font-weight:600;color:#64748b;white-space:nowrap}',
   '.event-roster-two{display:grid;grid-template-columns:1fr 1fr;gap:4.8mm}',
+  '.event-roster-simple .event-roster-two{grid-template-columns:1fr;row-gap:1.6mm}',
+  '.event-roster-simple .event-roster-line{gap:3mm;white-space:nowrap}',
+  '.event-roster-simple .event-roster-meta{font-size:7pt}',
+  '.event-roster-checklist .event-roster-group-title{margin-bottom:1.5mm}',
   '.event-roster-group{min-width:0}',
   '.event-roster-group-title{font-size:7.2pt;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.035em;margin:0 0 1mm}',
   '.event-roster-group-title small{font-size:7.2pt;font-weight:600;color:#64748b}',
@@ -372,9 +376,9 @@ export function renderEventRegistrationsHtml(
     }).join('');
     const title='<div class="event-roster-title"><strong>'+
       (index+1)+'. Familia '+escapeHtml(registration.familyName)+'</strong>'+
-      '<span>'+escapeHtml(registration.membershipNumber||'')+
-      ' · '+registration.attendees.length+' inscritos</span></div>';
-    return '<article class="event-roster-family">'+title+
+      (mode==='check'?'':'<span>'+escapeHtml(registration.membershipNumber||'')+
+      ' · '+registration.attendees.length+' inscritos</span>')+'</div>';
+    return '<article class="event-roster-family '+(mode==='simple'?'event-roster-simple':'event-roster-checklist')+'">'+title+
       '<div class="event-roster-two">'+
       '<div class="event-roster-group"><div class="event-roster-group-title">'+escapeHtml(adultsLabel)+
       ' <small>('+listedAdults.length+')</small></div>'+ (guardianLines||'<div class="event-roster-empty">Sin adultos inscritos</div>')+'</div>'+
