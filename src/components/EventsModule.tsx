@@ -585,20 +585,19 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><strong className="text-xs font-black text-slate-900">Familia {registration.familyName}</strong><span className="font-mono text-[9px] font-bold text-slate-400">{registration.membershipNumber}</span></div>
-                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">{registration.registrationKind==='public'?'Inscripción abierta · no socio/sin validación AMPA':'Socio validado'}</div>
+                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">{registration.registrationKind==='public'?'Socio no activo o alta provisional':'Familia socia activa'}</div>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${registration.status==='confirmed'?'bg-emerald-50 text-emerald-700':registration.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500'}`}>
                     {registration.status==='confirmed'?'Confirmada':registration.status==='waitlist'?'Espera':'Cancelada'}
                   </span>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {registration.attendees.map((attendee)=><div key={attendee.personType+attendee.personId} className="flex items-center gap-1.5 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-1.5">
-                    <span className="text-[10px] font-bold text-slate-600">{attendee.participantName}</span>
-                    {canEdit&&registration.status!=='cancelled'&&<button type="button" onClick={()=>void removeRegisteredAttendee(registration,attendee)} className="rounded-lg p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600" title={`Dar de baja a ${attendee.participantName}`} aria-label={`Dar de baja a ${attendee.participantName}`}><X size={12}/></button>}
-                  </div>)}
-                  {!registration.attendees.length&&<span className="text-[10px] text-slate-400">Sin personas seleccionadas</span>}
-                </div>
+                <EventRegistrationFamilyRoster
+                  registration={registration}
+                  family={families.find(family=>family.id===registration.familyId)}
+                  canEdit={canEdit}
+                  onRemove={attendee=>void removeRegisteredAttendee(registration,attendee)}
+                />
 
                 {canEdit&&registration.status!=='cancelled'&&<div className="mt-3 flex justify-end border-t border-slate-100 pt-3">
                   <button type="button" onClick={()=>void cancelFamilyRegistration(registration)} className="flex min-h-9 items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 text-[10px] font-extrabold text-rose-600 transition hover:bg-rose-50"><Trash2 size={13}/> Dar de baja a toda la familia</button>
@@ -818,6 +817,109 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     {draft&&<EventEditor draft={draft} setDraft={setDraft} saving={savingEvent} onSave={()=>void saveEvent()} onClose={()=>setDraft(null)} onImage={acceptImage}/>}
   </div>;
 }
+
+
+type RegisteredFamilyPerson = EventRegistrationRecord['attendees'][number];
+type FamilyRosterPerson = {
+  key: string;
+  name: string;
+  role: string;
+  registered: boolean;
+  person?: RegisteredFamilyPerson;
+  phone?: string;
+  email?: string;
+};
+
+function EventRegistrationFamilyRoster({
+  registration,family,canEdit,onRemove
+}:{
+  registration:EventRegistrationRecord;
+  family?:Family;
+  canEdit:boolean;
+  onRemove:(person:RegisteredFamilyPerson)=>void;
+}){
+  const enrolled=new Set(registration.attendees.map(person=>personKey(person.personType,person.personId)));
+  const registeredGuardians=registration.attendees.filter(person=>person.personType==='guardian');
+  const registeredStudents=registration.attendees.filter(person=>person.personType==='student');
+
+  // Primero los adultos inscritos, después los demás adultos de esa familia.
+  const adults:FamilyRosterPerson[]=[
+    ...registeredGuardians.map(person=>{
+      const known=family?.guardians.find(guardian=>guardian.id===person.personId);
+      return {
+        key:personKey('guardian',person.personId),name:person.participantName,
+        role:known ? known.relationship.replace('_',' ') : 'Identidad pendiente de vincular',
+        registered:true,person,phone:known?.phone||'',email:known?.email||''
+      };
+    }),
+    ...(family?.guardians||[]).filter(guardian=>!enrolled.has(personKey('guardian',guardian.id))).map(guardian=>({
+      key:personKey('guardian',guardian.id),name:guardian.fullName,
+      role:guardian.relationship.replace('_',' '),registered:false
+    }))
+  ];
+
+  // Siempre se muestran todos los hijos de la ficha familiar, aunque no ocupen plaza.
+  const children:FamilyRosterPerson[]=[
+    ...(family?.students||[]).map(student=>{
+      const person=registeredStudents.find(attendee=>attendee.personId===student.id);
+      return {
+        key:personKey('student',student.id),
+        name:`${student.firstName} ${student.lastName}`.trim(),
+        role:student.className||'Curso no indicado',
+        registered:!!person,person
+      };
+    }),
+    ...registeredStudents.filter(person=>!(family?.students||[]).some(student=>student.id===person.personId)).map(person=>({
+      key:personKey('student',person.personId),
+      name:person.participantName,
+      role:'Pendiente de vincular al directorio',
+      registered:true,person
+    }))
+  ].sort((a,b)=>Number(b.registered)-Number(a.registered) || a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+
+  const groups=[
+    {label:'Padres, madres y tutores',icon:UserRound,people:adults,isChild:false},
+    {label:'Hijos/as de la familia',icon:Baby,people:children,isChild:true}
+  ];
+
+  return <div className="mt-3 space-y-2">
+    <div className="text-[10px] font-semibold text-slate-500">
+      {registration.attendees.length} personas inscritas · {children.length} hijos/as vinculados a la familia
+    </div>
+    <div className="grid gap-2 md:grid-cols-2">
+      {groups.map(group=><div key={group.label} className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
+        <div className="mb-2 flex items-center gap-2 text-[10px] font-extrabold text-slate-600">
+          <group.icon size={13} className={group.isChild?'text-rose-400':'text-indigo-400'}/>
+          <span>{group.label}</span>
+          <span className="ml-auto text-[9px] font-semibold text-slate-400">{group.people.filter(person=>person.registered).length} inscritos</span>
+        </div>
+        <div className="space-y-1.5">
+          {group.people.map(member=><div key={member.key} className={`rounded-xl border px-2.5 py-2 ${member.registered?'border-indigo-100 bg-white':'border-transparent bg-slate-100/60'}`}>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className={`min-w-0 flex-1 text-[11px] font-semibold ${member.registered?'text-slate-800':'text-slate-500'}`}>{member.name}</span>
+              <span className={`shrink-0 text-[9px] font-bold ${member.registered?'text-indigo-600':'text-slate-400'}`}>{member.registered?'Inscrito':'Solo ficha familiar'}</span>
+              {canEdit&&registration.status!=='cancelled'&&member.person&&<button
+                type="button"
+                onClick={()=>onRemove(member.person!)}
+                className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                title={`Dar de baja a ${member.name}`}
+                aria-label={`Dar de baja a ${member.name}`}
+              ><X size={12}/></button>}
+            </div>
+            <div className="mt-0.5 text-[9px] text-slate-400">{member.role}</div>
+            {member.registered&&(member.phone||member.email)&&<div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-slate-500">
+              {member.phone&&<span>Tel. {member.phone}</span>}
+              {member.email&&<span className="break-all">{member.email}</span>}
+            </div>}
+          </div>)}
+          {!group.people.length&&<p className="text-[10px] text-slate-400">Sin personas registradas en la ficha familiar.</p>}
+        </div>
+      </div>)}
+    </div>
+    <p className="text-[9px] leading-4 text-slate-400">Los familiares no inscritos se muestran únicamente para identificar la unidad familiar y no se contabilizan como asistentes.</p>
+  </div>;
+}
+
 
 function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
   draft:EventDraft;
