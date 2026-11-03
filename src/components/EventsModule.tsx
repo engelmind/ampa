@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { EventDetail, EventRegistrationRecord, EventSummary, Family, SystemSettings } from '../types/family';
-import { createEventParticipantsPdfArtifact, PdfArtifact } from '../utils/pdfExportUtils';
+import { createEventParticipantsPdfArtifact, createEventRegistrationsPdfArtifact, PdfArtifact } from '../utils/pdfExportUtils';
 import { PdfPreviewModal } from './PdfPreviewModal';
 import QRCode from 'qrcode';
 
@@ -300,6 +300,14 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     setPrintPreview(createEventParticipantsPdfArtifact(detail,families,settings));
   };
 
+  const downloadRegistrationsPdf=()=>{
+    if(!detail || !detail.registrations.some(registration=>registration.status!=='cancelled')){
+      onNotify('info','Sin inscripciones','Todavía no hay familias inscritas.');
+      return;
+    }
+    setPrintPreview(createEventRegistrationsPdfArtifact(detail,families,settings));
+  };
+
   const toggleRegistrationState=async()=>{
     if(!detail || !canEdit) return;
     const deadlineTime=detail.registrationDeadline ? new Date(detail.registrationDeadline).getTime() : NaN;
@@ -508,7 +516,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <div className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-500">Inscripciones online</div>
+              <div className="text-[10px] font-black uppercase tracking-[.18em] text-indigo-500">Inscripciones del evento</div>
               <span className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase ${!detail.registrationEnabled?'bg-slate-100 text-slate-500':registrationOpen?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}>
                 {!detail.registrationEnabled?'Desactivadas':registrationOpen?'Abiertas':'Cerradas'}
               </span>
@@ -571,7 +579,10 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
               <div className="text-[10px] font-black uppercase tracking-[.14em] text-slate-400">Solicitudes recibidas</div>
               <div className="mt-1 text-xs text-slate-500">{detail.registrations.length-cancelledRegistrations.length} activas · {cancelledRegistrations.length} canceladas</div>
             </div>
-            {canEdit&&confirmedRegistrations.length>0&&<button type="button" disabled={savingAttendance} onClick={()=>void loadConfirmedRegistrationsAsAttendance()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-3 text-xs font-extrabold text-indigo-700 disabled:opacity-50"><ClipboardCheck size={15}/> Cargar confirmados como asistencia</button>}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={downloadRegistrationsPdf} className="flex min-h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700"><FileDown size={15}/> Informe de inscritos y familias</button>
+              {canEdit&&confirmedRegistrations.length>0&&<button type="button" disabled={savingAttendance} onClick={()=>void loadConfirmedRegistrationsAsAttendance()} className="flex min-h-10 items-center gap-2 rounded-2xl border border-indigo-200 bg-white px-3 text-xs font-extrabold text-indigo-700 disabled:opacity-50"><ClipboardCheck size={15}/> Cargar confirmados como asistencia</button>}
+            </div>
           </div>
 
           <div className="mt-3 space-y-2">
