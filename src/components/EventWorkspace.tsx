@@ -141,6 +141,8 @@ export function EventWorkspace({
   const registrationOpen=detail.registrationEnabled && (!detail.registrationDeadline || new Date(detail.registrationDeadline).getTime()>=Date.now());
   const capacity=detail.registrationCapacity;
   const busyRefresh=async()=>{await onRefresh();await onReload();};
+  const now=new Date();
+  const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
 
   const listed=detail.registrations.filter(r=>{
     if(regFilter==='active' && r.status==='cancelled') return false;
@@ -207,7 +209,7 @@ export function EventWorkspace({
     if(!attEditorId||!canEdit) return;
     const wasPresent=attendanceMap.has(attEditorId);
     if(!attSelected.size && wasPresent && !window.confirm('¿Eliminar toda la asistencia de esta familia? La inscripción no cambiará.')) return;
-    if(attSelected.size && detail.eventDate>new Date().toLocaleDateString('en-CA') &&
+    if(attSelected.size && detail.eventDate>today &&
       !window.confirm('La fecha de este evento aún no ha llegado. ¿Desea registrar asistencia efectiva por adelantado?')) return;
     setBusy(true);
     try{
@@ -362,7 +364,7 @@ export function EventWorkspace({
         <div><h2 className="text-lg font-black text-slate-950">Asistencia efectiva</h2><p className="text-[11px] text-slate-500">Control presencial independiente de las inscripciones. Cada familia se guarda por separado.</p></div>
         <button type="button" onClick={openAttendanceReport} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><FileDown size={14}/> PDF de asistencia</button>
       </div>
-      {detail.eventDate>new Date().toLocaleDateString('en-CA')&&<p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">Actividad futura: todavía no debe contabilizarse asistencia real. Si necesita registrar una excepción, la operación exigirá confirmación explícita.</p>}
+      {detail.eventDate>today&&<p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">Actividad futura: todavía no debe contabilizarse asistencia real. Si necesita registrar una excepción, la operación exigirá confirmación explícita.</p>}
       <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_200px]">
         <label className="relative"><Search size={15} className="absolute left-3 top-3.5 text-slate-400"/><input value={attQuery} onChange={e=>{setAttQuery(e.target.value);setAttPage(1)}} className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs" placeholder="Buscar familia o miembro (también no inscritos)…"/></label>
         <select aria-label="Filtrar asistencia" value={attFilter} onChange={e=>{setAttFilter(e.target.value);setAttPage(1)}} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600">
@@ -388,7 +390,7 @@ export function EventWorkspace({
               </div>
               {attEditorId===f.id && currentAttFamily&&<div className="border-t border-emerald-100 bg-emerald-50/25 p-4">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><strong className="text-xs text-slate-800">Asistencia · {f.familyName}</strong><p className="mt-1 text-[10px] text-slate-500">Marque únicamente las personas cuya presencia se ha comprobado.</p></div><button type="button" onClick={()=>setAttEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
-                <MemberPicker family={currentAttFamily} selected={attSelected} onChange={setAttSelected} readonly={!canEdit||busy} formChildren={reg?.formChildren}/>
+                <MemberPicker family={currentAttFamily} selected={attSelected} onChange={setAttSelected} readonly={!canEdit||busy} formChildren={reg?.formChildren} extra={[...(reg?.attendees||[]),...detail.attendees.filter(a=>a.familyId===f.id)]}/>
                 <div className="mt-3 flex justify-end gap-2 border-t border-slate-200 pt-3"><button type="button" onClick={()=>setAttEditorId(null)} className="rounded-xl border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600">Cancelar</button>{canEdit&&<button type="button" disabled={busy||(!attSelected.size&&!selected)} onClick={()=>void saveAttendance()} className="rounded-xl bg-emerald-700 px-4 py-2 text-[10px] font-bold text-white disabled:opacity-40">{busy?'Guardando…':attSelected.size?'Guardar asistencia':'Retirar asistencia'}</button>}</div>
               </div>}
             </div>;
