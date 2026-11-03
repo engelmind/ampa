@@ -226,7 +226,7 @@ export function EventWorkspace({
   };
 
   const openRegistrationReport=(mode:'simple'|'check')=>{
-    if(!active.length){onNotify('info','No hay inscripciones activas');return}
+    if(!confirmed.length){onNotify('info','No hay familias confirmadas');return}
     setPrintPreview(createEventRegistrationsPdfArtifact(detail,families,settings,mode));
   };
   const openAttendanceReport=()=>{
@@ -312,7 +312,7 @@ export function EventWorkspace({
 
       {addingFamily&&<div className="mt-4 rounded-[22px] border border-indigo-200 bg-indigo-50/30 p-4">
         <div className="flex items-center justify-between gap-3"><strong className="text-xs text-slate-800">Alta o reactivación de inscripción</strong><button type="button" aria-label="Cerrar alta" onClick={()=>setAddingFamily(false)}><X size={16}/></button></div>
-        <p className="mt-1 text-[10px] text-slate-500">Busque una familia del directorio y seleccione exactamente quién ocupa plaza. Las inscripciones canceladas pueden reactivarse.</p>
+        <p className="mt-1 text-[10px] text-slate-500">Busque la familia y seleccione a los adultos que asistirán y, cuando proceda, a los niños que utilizarán la ludoteca. Las bajas pueden reactivarse.</p>
         <div className="relative mt-3"><Search size={15} className="absolute left-3 top-3 text-slate-400"/><input value={familyPick} onChange={e=>setFamilyPick(e.target.value)} placeholder="Nombre, número de socio, adulto o hijo…" className="min-h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs"/></div>
         <div className="mt-2 max-h-[260px] divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-100 bg-white">
           {searchedToAdd.map(f=><button key={f.id} type="button" onClick={()=>openRegistration(f.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-indigo-50"><span className="min-w-0 text-[11px] font-semibold text-slate-700">{f.familyName} <span className="font-mono text-[9px] text-slate-400">{f.membershipNumber}</span></span><span className="text-[10px] font-bold text-indigo-700">{registrationMap.get(f.id)?.status==='cancelled'?'Reactivar':'Seleccionar'}</span></button>)}
@@ -322,7 +322,7 @@ export function EventWorkspace({
       </div>}
 
       {regEditorId && (!currentReg || (currentReg.status==='cancelled' && !listedPage.some(item=>item.familyId===regEditorId))) && currentRegFamily&&<div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4">
-        <div className="mb-3 flex items-center justify-between"><div><h3 className="text-xs font-black text-slate-800">{currentReg?.status==='cancelled'?'Reactivar inscripción':'Nueva inscripción'} · {currentRegFamily.familyName}</h3><p className="mt-1 text-[10px] text-slate-500">Seleccione quién ocupará plaza. Los demás miembros quedan vinculados solo en el directorio.</p></div><button type="button" onClick={()=>setRegEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
+        <div className="mb-3 flex items-center justify-between"><div><h3 className="text-xs font-black text-slate-800">{currentReg?.status==='cancelled'?'Reactivar inscripción':'Nueva inscripción'} · {currentRegFamily.familyName}</h3><p className="mt-1 text-[10px] text-slate-500">Seleccione únicamente a las personas que participarán. Los demás miembros de la familia no se inscribirán.</p></div><button type="button" onClick={()=>setRegEditorId(null)} aria-label="Cerrar"><X size={16}/></button></div>
         <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={currentReg?.formChildren} extra={currentReg?.attendees} parentsSchool={isParentsSchool}/>
         <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={()=>setRegEditorId(null)} className="rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600">Cancelar</button><button type="button" disabled={busy||!regSelected.size} onClick={()=>void saveRegistration()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-[11px] font-bold text-white disabled:opacity-50"><Plus size={12} className="inline"/> Confirmar inscripción</button></div>
       </div>}
@@ -335,20 +335,20 @@ export function EventWorkspace({
         </select>
       </div>
       <div className="mt-3 overflow-hidden rounded-2xl border border-slate-100">
-        <div className="hidden grid-cols-[minmax(0,1fr)_95px_90px_96px] gap-2 bg-slate-50 px-4 py-2 text-[9px] font-extrabold uppercase tracking-wide text-slate-400 sm:grid">
+        <div className="hidden grid-cols-[minmax(0,1fr)_156px_90px_96px] gap-2 bg-slate-50 px-4 py-2 text-[9px] font-extrabold uppercase tracking-wide text-slate-400 sm:grid">
           <span>Familia y n.º socio</span><span>Personas</span><span>Estado</span><span className="text-right">Gestión</span>
         </div>
         <div className="divide-y divide-slate-100">
           {listedPage.map(r=><div key={r.id}>
-            <div className="grid gap-2 px-4 py-3 transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_95px_90px_96px] sm:items-center">
+            <div className="grid gap-2 px-4 py-3 transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_156px_90px_96px] sm:items-center">
               <div className="min-w-0"><div className="truncate text-xs font-extrabold text-slate-800">{r.familyName}</div><div className="font-mono text-[9px] text-slate-400">{r.membershipNumber}</div></div>
-              <div className="text-[11px] font-black text-slate-700">{r.status==='cancelled'?'—':r.attendees.length} <span className="font-normal text-slate-400">{r.status==='cancelled'?'histórico':'personas'}</span></div>
+              <div className="text-[10px] font-extrabold text-slate-700">{r.status==='cancelled'?'Baja familiar':isParentsSchool?`${r.attendees.filter(a=>a.personType==='guardian').length} adultos · ${r.attendees.filter(a=>a.personType==='student').length} ludoteca`:`${r.attendees.length} inscritos`}</div>
               <div><span className={'rounded-lg px-2 py-1 text-[9px] font-bold '+(r.status==='confirmed'?'bg-emerald-50 text-emerald-700':r.status==='waitlist'?'bg-amber-50 text-amber-700':'bg-slate-100 text-slate-500')}>{labelStatus(r.status)}</span></div>
               <div className="sm:text-right"><button type="button" aria-expanded={regEditorId===r.familyId} onClick={()=>regEditorId===r.familyId?setRegEditorId(null):openRegistration(r.familyId)} className="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-[10px] font-black text-indigo-700">{regEditorId===r.familyId?'Cerrar':'Gestionar'}</button></div>
             </div>
             {regEditorId===r.familyId && currentRegFamily&&<div className="border-t border-indigo-100 bg-indigo-50/25 p-4">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-                <div><h3 className="text-xs font-black text-slate-800">{r.familyName} · Edición individual</h3><p className="mt-1 text-[10px] text-slate-500">Marque las personas que tienen plaza. Los hijos declarados en el formulario se identifican con su etiqueta, pero no se seleccionan automáticamente.</p></div>
+                <div><h3 className="text-xs font-black text-slate-800">{r.familyName} · Edición individual</h3><p className="mt-1 text-[10px] text-slate-500">Marque los adultos asistentes y los niños que utilizarán la ludoteca. Los cambios afectan exclusivamente a esta inscripción.</p></div>
                 <button type="button" aria-label="Cerrar edición" onClick={()=>setRegEditorId(null)}><X size={16}/></button>
               </div>
               <MemberPicker family={currentRegFamily} selected={regSelected} onChange={setRegSelected} readonly={!canEdit||busy} formChildren={r.formChildren} extra={r.attendees} parentsSchool={isParentsSchool}/>
