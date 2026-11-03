@@ -836,6 +836,7 @@ type FamilyRosterPerson = {
   name: string;
   role: string;
   registered: boolean;
+  declaredInForm?: boolean;
   person?: RegisteredFamilyPerson;
   phone?: string;
   email?: string;
@@ -852,6 +853,7 @@ function EventRegistrationFamilyRoster({
   const enrolled=new Set(registration.attendees.map(person=>personKey(person.personType,person.personId)));
   const registeredGuardians=registration.attendees.filter(person=>person.personType==='guardian');
   const registeredStudents=registration.attendees.filter(person=>person.personType==='student');
+  const childrenDeclaredInForm=new Set((registration.formChildren||[]).map(child=>child.studentId));
 
   // Primero los adultos inscritos, después los demás adultos de esa familia.
   const adults:FamilyRosterPerson[]=[
@@ -877,16 +879,16 @@ function EventRegistrationFamilyRoster({
         key:personKey('student',student.id),
         name:`${student.firstName} ${student.lastName}`.trim(),
         role:student.className||'Curso no indicado',
-        registered:!!person,person
+        registered:!!person,declaredInForm:childrenDeclaredInForm.has(student.id),person
       };
     }),
     ...registeredStudents.filter(person=>!(family?.students||[]).some(student=>student.id===person.personId)).map(person=>({
       key:personKey('student',person.personId),
       name:person.participantName,
       role:'Pendiente de vincular al directorio',
-      registered:true,person
+      registered:true,declaredInForm:childrenDeclaredInForm.has(person.personId),person
     }))
-  ].sort((a,b)=>Number(b.registered)-Number(a.registered) || a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
+  ].sort((a,b)=>Number(b.registered)-Number(a.registered) || Number(!!b.declaredInForm)-Number(!!a.declaredInForm) || a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
 
   const groups=[
     {label:'Padres, madres y tutores',icon:UserRound,people:adults,isChild:false},
@@ -895,20 +897,20 @@ function EventRegistrationFamilyRoster({
 
   return <div className="mt-3 space-y-2">
     <div className="text-[10px] font-semibold text-slate-500">
-      {registration.attendees.length} personas inscritas · {children.length} hijos/as vinculados a la familia
+      {registration.attendees.length} personas con plaza · {(registration.formChildren||[]).length} hijos/as declarados en formulario · {children.length} hijos/as en la ficha
     </div>
     <div className="grid gap-2 md:grid-cols-2">
       {groups.map(group=><div key={group.label} className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/50 p-3">
         <div className="mb-2 flex items-center gap-2 text-[10px] font-extrabold text-slate-600">
           <group.icon size={13} className={group.isChild?'text-rose-400':'text-indigo-400'}/>
           <span>{group.label}</span>
-          <span className="ml-auto text-[9px] font-semibold text-slate-400">{group.people.filter(person=>person.registered).length} inscritos</span>
+          <span className="ml-auto text-[9px] font-semibold text-slate-400">{group.isChild ? `${group.people.filter(person=>person.declaredInForm).length} en formulario` : `${group.people.filter(person=>person.registered).length} con plaza`}</span>
         </div>
         <div className="space-y-1.5">
-          {group.people.map(member=><div key={member.key} className={`rounded-xl border px-2.5 py-2 ${member.registered?'border-indigo-100 bg-white':'border-transparent bg-slate-100/60'}`}>
+          {group.people.map(member=><div key={member.key} className={`rounded-xl border px-2.5 py-2 ${member.registered?'border-indigo-100 bg-white':member.declaredInForm?'border-rose-100 bg-white':'border-transparent bg-slate-100/60'}`}>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className={`min-w-0 flex-1 text-[11px] font-semibold ${member.registered?'text-slate-800':'text-slate-500'}`}>{member.name}</span>
-              <span className={`shrink-0 text-[9px] font-bold ${member.registered?'text-indigo-600':'text-slate-400'}`}>{member.registered?'Inscrito':'Solo ficha familiar'}</span>
+              <span className={`min-w-0 flex-1 text-[11px] font-semibold ${member.registered || member.declaredInForm?'text-slate-800':'text-slate-500'}`}>{member.name}</span>
+              <span className={`shrink-0 text-[9px] font-bold ${member.registered?'text-indigo-600':member.declaredInForm?'text-rose-600':'text-slate-400'}`}>{member.registered?'Inscrito (plaza)':member.declaredInForm?'Incluido en formulario':'Solo ficha familiar'}</span>
               {canEdit&&registration.status!=='cancelled'&&member.person&&<button
                 type="button"
                 onClick={()=>onRemove(member.person!)}
@@ -927,7 +929,7 @@ function EventRegistrationFamilyRoster({
         </div>
       </div>)}
     </div>
-    <p className="text-[9px] leading-4 text-slate-400">Los familiares no inscritos se muestran únicamente para identificar la unidad familiar y no se contabilizan como asistentes.</p>
+    <p className="text-[9px] leading-4 text-slate-400">«Incluido en formulario» identifica a los hijos declarados por sus padres, aunque no ocupen plaza. «Solo ficha familiar» se reserva para los miembros no mencionados en la solicitud. Solo «Inscrito (plaza)» cuenta en el aforo; la asistencia real se registra tras el evento.</p>
   </div>;
 }
 
