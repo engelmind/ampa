@@ -143,6 +143,7 @@ export function EventWorkspace({
   const busyRefresh=async()=>{await onRefresh();await onReload();};
   const now=new Date();
   const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+  const pendingVerification=detail.eventDate>today;
 
   const listed=detail.registrations.filter(r=>{
     if(regFilter==='active' && r.status==='cancelled') return false;
@@ -256,8 +257,8 @@ export function EventWorkspace({
         {[
           {label:'Familias inscritas',value:confirmed.length,icon:Users},
           {label:'Plazas confirmadas',value:reserved,icon:TicketCheck},
-          {label:'Familias asistentes',value:attendanceMap.size,icon:ClipboardCheck},
-          {label:'Asistentes efectivos',value:detail.attendees.length,icon:UserRound}
+          {label:pendingVerification?'Familias precargadas':'Familias con asistencia',value:attendanceMap.size,icon:ClipboardCheck},
+          {label:pendingVerification?'Personas precargadas':'Asistentes registrados',value:detail.attendees.length,icon:UserRound}
         ].map(k=><div key={k.label} className="bg-white px-4 py-3">
           <div className="flex items-center gap-2 text-[9px] font-semibold text-slate-500"><k.icon size={13} className="text-indigo-400"/>{k.label}</div>
           <div className="mt-1 text-2xl font-black text-slate-950">{k.value}</div>
@@ -279,9 +280,9 @@ export function EventWorkspace({
           <p className="mt-4 text-[11px] font-extrabold text-indigo-700">Buscar, añadir y modificar familias</p>
         </button>
         <button type="button" onClick={()=>chooseTab('attendance')} className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-5 text-left shadow-sm transition hover:border-emerald-300">
-          <div className="flex items-center gap-2 text-[11px] font-black text-emerald-700"><ClipboardCheck size={17}/> Asistencia efectiva</div>
+          <div className="flex items-center gap-2 text-[11px] font-black text-emerald-700"><ClipboardCheck size={17}/>{pendingVerification?'Asistencia precargada':'Control de asistencia'}</div>
           <p className="mt-2 text-2xl font-black text-slate-900">{attendanceMap.size} <span className="text-xs text-slate-500">familias</span></p>
-          <p className="mt-1 text-[11px] text-slate-500">{detail.attendees.length} personas verificadas · {confirmed.filter(r=>!attendanceMap.has(r.familyId)).length} familias confirmadas sin asistencia</p>
+          <p className="mt-1 text-[11px] text-slate-500">{detail.attendees.length} personas {pendingVerification?'pendientes de verificar':'anotadas'} · {confirmed.filter(r=>!attendanceMap.has(r.familyId)).length} familias confirmadas sin marcar</p>
           <p className="mt-4 text-[11px] font-extrabold text-emerald-700">Pasar lista y corregir una familia</p>
         </button>
         <button type="button" onClick={()=>chooseTab('settings')} className="rounded-[24px] border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-slate-300">
@@ -292,7 +293,7 @@ export function EventWorkspace({
         </button>
       </div>
       <p className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11px] text-slate-500">
-        Las <strong className="text-slate-700">inscripciones</strong> son reservas de plaza. La <strong className="text-slate-700">asistencia</strong> se registra por separado y solo cuando se confirma que una persona acudió a la actividad.
+        Las <strong className="text-slate-700">inscripciones</strong> son reservas de plaza. La <strong className="text-slate-700">asistencia</strong> se gestiona por separado. {pendingVerification?'Las personas precargadas antes del evento están pendientes de comprobar presencialmente.':'Compruebe individualmente la presencia real de cada familia.'}
       </p>
     </section>}
 
@@ -361,10 +362,10 @@ export function EventWorkspace({
 
     {tab==='attendance'&&<section className="rounded-[28px] border border-white/70 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h2 className="text-lg font-black text-slate-950">Asistencia efectiva</h2><p className="text-[11px] text-slate-500">Control presencial independiente de las inscripciones. Cada familia se guarda por separado.</p></div>
+        <div><h2 className="text-lg font-black text-slate-950">{pendingVerification?'Asistencia precargada · pendiente de comprobación':'Asistencia presencial'}</h2><p className="text-[11px] text-slate-500">Control independiente de las inscripciones. Cada familia se guarda por separado.</p></div>
         <button type="button" onClick={openAttendanceReport} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-[11px] font-bold text-slate-600"><FileDown size={14}/> PDF de asistencia</button>
       </div>
-      {detail.eventDate>today&&<p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">Actividad futura: todavía no debe contabilizarse asistencia real. Si necesita registrar una excepción, la operación exigirá confirmación explícita.</p>}
+      {pendingVerification&&<p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">Actividad futura: hay {detail.attendees.length} personas precargadas que NO deben considerarse asistencia real hasta comprobar su presencia. No se borrarán automáticamente. Cualquier nuevo registro anticipado requiere confirmación.</p>}
       <div className="mt-4 grid gap-2 md:grid-cols-[minmax(0,1fr)_200px]">
         <label className="relative"><Search size={15} className="absolute left-3 top-3.5 text-slate-400"/><input value={attQuery} onChange={e=>{setAttQuery(e.target.value);setAttPage(1)}} className="min-h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs" placeholder="Buscar familia o miembro (también no inscritos)…"/></label>
         <select aria-label="Filtrar asistencia" value={attFilter} onChange={e=>{setAttFilter(e.target.value);setAttPage(1)}} className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-[11px] font-bold text-slate-600">
@@ -385,7 +386,7 @@ export function EventWorkspace({
               <div className="grid gap-2 px-4 py-3 hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_90px_110px_100px] sm:items-center">
                 <div className="min-w-0"><strong className="block truncate text-xs text-slate-800">{f.familyName}</strong><span className="font-mono text-[9px] text-slate-400">{f.membershipNumber}</span></div>
                 <div className="text-[10px] font-semibold text-slate-500">{reg?.status==='confirmed'?'Confirmada':reg?.status==='waitlist'?'En espera':'Sin inscripción'}</div>
-                <div className={'text-[11px] font-bold '+(selected?'text-emerald-700':'text-slate-400')}>{selected?selected.size+' presentes':'Sin marcar'}</div>
+                <div className={'text-[11px] font-bold '+(selected?'text-emerald-700':'text-slate-400')}>{selected?selected.size+(pendingVerification?' precargadas':' presentes'):'Sin marcar'}</div>
                 <div className="sm:text-right"><button type="button" onClick={()=>attEditorId===f.id?setAttEditorId(null):openAttendance(f.id)} aria-expanded={attEditorId===f.id} className="rounded-xl border border-emerald-100 px-3 py-2 text-[10px] font-bold text-emerald-700">{attEditorId===f.id?'Cerrar':'Pasar lista'}</button></div>
               </div>
               {attEditorId===f.id && currentAttFamily&&<div className="border-t border-emerald-100 bg-emerald-50/25 p-4">
