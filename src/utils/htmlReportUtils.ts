@@ -300,6 +300,87 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
   }, body);
 }
 
+
+/** Relación de solicitudes del evento: incluye el contexto familiar sin sumar
+ * hijos no inscritos al número de plazas. Los datos son de uso interno. */
+export function renderEventRegistrationsHtml(event: EventDetail, families: Family[], settings: SystemSettings): string {
+  const registrations=event.registrations.filter(registration=>registration.status!=='cancelled')
+    .sort((a,b)=>a.familyName.localeCompare(b.familyName,'es',{sensitivity:'base'}));
+  const familyMap=new Map(families.map(family=>[family.id,family] as const));
+  const currentYear=event.academicYear||settings.activeAcademicYear;
+  const eventDate=event.eventDate ? new Date(event.eventDate+'T12:00:00').toLocaleDateString('es-ES') : 'Sin fecha';
+  const participantCount=registrations.reduce((n,registration)=>n+registration.attendees.length,0);
+  const guardianCount=registrations.reduce((n,registration)=>n+registration.attendees.filter(person=>person.personType==='guardian').length,0);
+  const studentCount=participantCount-guardianCount;
+  const linkedChildren=registrations.reduce((n,registration)=>n+(familyMap.get(registration.familyId)?.students.length||0),0);
+
+  const displayRow=(name:string,role:string,registered:boolean,isChild:boolean,phone='',email='',pending=false):string=>{
+    const contacts=registered && !isChild && (phone||email)
+      ? '<div class="attendee-contacts">'+(phone?'<span>Tel.: '+escapeHtml(phone)+'</span>':'')+
+        (email?'<span>Email: '+escapeHtml(email)+'</span>':'')+'</div>' : '';
+    return '<div class="attendee-row'+(isChild?' child-row':'')+'">'+
+      '<span class="check-square"'+(!registered?' style="visibility:hidden"':'')+'></span>'+
+      '<span class="attendee-details"><span class="attendee-name">'+safeText(name)+'</span>'+contacts+'</span>'+
+      '<span class="attendee-role">'+escapeHtml(role)+(pending?'<br>Pendiente de vincular':'')+
+      '<br>'+ (registered?'Inscrito':'Solo ficha familiar')+'</span></div>';
+  };
+
+  const panels=registrations.map(registration=>{
+    const family=familyMap.get(registration.familyId);
+    const selected=new Set(registration.attendees.map(person=>person.personType+':'+person.personId));
+    const registeredAdults=registration.attendees.filter(person=>person.personType==='guardian');
+    const adultRows=registeredAdults.map(person=>{
+      const matching=family?.guardians.find(guardian=>guardian.id===person.personId);
+      return displayRow(
+        person.participantName,
+        matching?guardianLabel(matching.relationship):'Adulto declarado',
+        true,false,matching?.phone||'',matching?.email||'',!matching
+      );
+    });
+    for(const guardian of family?.guardians||[]){
+      if(!selected.has('guardian:'+guardian.id)){
+        adultRows.push(displayRow(guardian.fullName,guardianLabel(guardian.relationship),false,false));
+      }
+    }
+    const registeredKids=registration.attendees.filter(person=>person.personType==='student');
+    const childRows=(family?.students||[]).map(student=>
+      displayRow(
+        studentName(student),studentCourse(student,currentYear),
+        selected.has('student:'+student.id),true
+      )
+    );
+    for(const child of registeredKids){
+      if(!(family?.students||[]).some(student=>student.id===child.personId)){
+        childRows.push(displayRow(child.participantName,'Hijo/a',true,true,'','',true));
+      }
+    }
+    const familyName=family?.familyName||registration.familyName;
+    const title='<div class="family-title"><strong>Familia '+safeText(familyName)+'</strong>'+
+      '<span class="family-metadata"><span class="member-id">'+safeText(registration.membershipNumber,'—')+'</span>'+
+      '<span class="member-id">'+registration.attendees.length+' inscritos</span></span></div>';
+    return '<article class="event-family">'+title+
+      '<div class="muted">Padres, madres y tutores</div>'+adultRows.join('')+
+      '<div class="muted" style="margin-top:2mm;border-top:1px solid #e2e8f0;padding-top:1.5mm">Hijos/as vinculados a la familia</div>'+
+      (childRows.join('')||'<div class="empty">Sin hijos/as registrados</div>')+
+      '</article>';
+  }).join('');
+  const body='<section class="event-hero no-image"><div><h2>'+safeText(event.title)+'</h2>'+
+    '<div class="event-info"><span>Fecha: '+escapeHtml(eventDate)+'</span><span>Curso '+safeText(currentYear)+'</span></div>'+
+    (event.description?'<div class="event-description">'+escapeHtml(event.description)+'</div>':'')+
+    '</div></section>'+
+    summary([['Familias inscritas',registrations.length],['Personas inscritas',participantCount],
+      ['Adultos inscritos',guardianCount],['Menores inscritos',studentCount],['Hijos/as vinculados',linkedChildren]])+
+    reportSectionTitle('Inscripciones y composición familiar',registrations.length)+
+    (panels||'<p class="blank">No hay inscripciones activas.</p>');
+  return documentHtml({
+    academicYear:currentYear,schoolName:settings.schoolName,associationName:settings.associationName
+  },{
+    title:'Inscripciones · '+event.title,label:'Registro de solicitudes',landscape:false,
+    detail:eventDate+' · Adultos primero, hijos después',
+    privacy:'Los hijos/as marcados «Solo ficha familiar» no ocupan plaza y no constan como inscritos. Este listado no acredita asistencia efectiva.'
+  },body);
+}
+
 export function renderReportHtml(kind: HtmlReportKind, families: Family[], settings: SystemSettings): string {
   const options: PrintReportOptions = {
     academicYear: settings.activeAcademicYear,
