@@ -52,6 +52,11 @@ const dateLabel = (iso:string) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
 };
 
+const isFutureEvent=(eventDate:string)=>{
+  const now=new Date();
+  const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+  return eventDate>today;
+};
 const personKey=(type:'guardian'|'student',id:string)=>`${type}:${id}`;
 const familyMemberKeys=(family:Family)=>new Set([
   ...family.guardians.map((guardian)=>personKey('guardian',guardian.id)),
@@ -540,8 +545,8 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
             <h2 className="truncate text-base font-black text-slate-900">{event.title}</h2>
             <p className="mt-1 line-clamp-2 min-h-9 text-[11px] leading-4 text-slate-500">{event.description||'Sin descripción.'}</p>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · familias</div></div>
-              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">Asistencia · personas</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.familyCount}</div><div className="text-[9px] font-bold text-slate-400">{isFutureEvent(event.eventDate)?'Precargadas · familias':'Asistencia · familias'}</div></div>
+              <div className="rounded-2xl bg-slate-50 p-2.5"><div className="text-lg font-black">{event.participantCount}</div><div className="text-[9px] font-bold text-slate-400">{isFutureEvent(event.eventDate)?'Precargadas · personas':'Asistencia · personas'}</div></div>
             </div>
             {(event.registrationEnabled || event.registeredFamilyCount>0)&&<div className="mt-2 rounded-2xl bg-indigo-50 px-3 py-2 text-[9px] font-bold text-indigo-700">Inscritos: {event.registeredFamilyCount} familias · {event.registeredParticipantCount} personas{event.waitlistFamilyCount?' · '+event.waitlistFamilyCount+' en espera':''}</div>}
           </div>
@@ -561,7 +566,7 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
     ) : (
       <div className="overflow-x-auto rounded-[28px] border border-white/70 bg-white/90 shadow-[0_16px_40px_rgba(71,85,105,.08)]">
         <table className="min-w-[760px] w-full border-collapse text-left">
-          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Inscritos</th><th className="px-4 py-3 text-right">Asistentes</th><th className="px-4 py-3 text-right">Espera</th></tr></thead>
+          <thead className="bg-slate-50/90 text-[9px] font-black uppercase tracking-[.14em] text-slate-400"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Actividad</th><th className="px-4 py-3">Curso</th><th className="px-4 py-3 text-right">Inscritos</th><th className="px-4 py-3 text-right">Asistencia / precarga</th><th className="px-4 py-3 text-right">Espera</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {visibleEvents.map((event)=><tr key={event.id} onClick={()=>void loadDetail(event.id)} className="cursor-pointer transition hover:bg-indigo-50/40">
               <td className="whitespace-nowrap px-4 py-3 text-[11px] font-bold text-indigo-600">{dateLabel(event.eventDate)}</td>
