@@ -1372,8 +1372,24 @@ Deno.serve(async (req: Request) => {
         const rows=personType==='guardian'
           ? await sql`select trim(concat_ws(' ',first_name,last_name)) as name from guardians where id=${personId}::uuid and family_id=${familyId}::uuid`
           : await sql`select trim(concat_ws(' ',first_name,last_name)) as name from students where id=${personId}::uuid and family_id=${familyId}::uuid`;
-        if(!rows.length) return reply({error:'ATTENDEE_NOT_IN_FAMILY'},400);
-        selected.push({personType,personId,participantName:String(rows[0].name).slice(0,180)});
+        let name=String(rows[0]?.name||'').trim();
+        if(!name){
+          const inherited=await sql`
+            select a.participant_name as name
+            from event_registration_attendees a
+            join event_registrations r on r.id=a.registration_id
+            where r.event_id=${eventId}::uuid and r.family_id=${familyId}::uuid
+              and a.person_type=${personType} and a.person_id=${personId}::uuid
+            union all
+            select a.participant_name as name
+            from event_attendees a
+            where a.event_id=${eventId}::uuid and a.family_id=${familyId}::uuid
+              and a.person_type=${personType} and a.person_id=${personId}::uuid
+            limit 1`;
+          name=String(inherited[0]?.name||'').trim();
+        }
+        if(!name) return reply({error:'ATTENDEE_NOT_IN_FAMILY'},400);
+        selected.push({personType,personId,participantName:name.slice(0,180)});
       }
       await sql.begin(async tx=>{
         await tx`select id from events where id=${eventId}::uuid for update`;
