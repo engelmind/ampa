@@ -342,28 +342,24 @@ export default function App() {
   const courseBreakdown = useMemo(() => {
     const map = new Map<string,{ label:string; count:number; order:number }>();
     activeFamilies.flatMap((family)=>family.students).forEach((student) => {
-      if (hasOfficialCurrentCourse(student,settings.activeAcademicYear)) {
-        const calculated = calculateStudentCourse(student,settings.activeAcademicYear);
-        const official = normalizeCourseLabel(calculated.fullDisplay);
-        const current=map.get(official);
-        map.set(official,{
-          label:official,
-          count:(current?.count||0)+1,
-          order:calculated.ageInAcademicYear,
-        });
+      if (!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA) {
+        const label = 'Sin curso asignado';
+        const current = map.get(label);
+        map.set(label,{label,count:(current?.count||0)+1,order:999});
         return;
       }
-      if (!student.birthDateDDMMAAAA) {
-        const current=map.get('Sin curso asignado');
-        map.set('Sin curso asignado',{label:'Sin curso asignado',count:(current?.count||0)+1,order:999});
-        return;
-      }
+
       const calculated = calculateStudentCourse(student,settings.activeAcademicYear);
-      const key = calculated.fullDisplay;
-      const current = map.get(key);
-      map.set(key,{
-        label:key,
-        count:(current?.count || 0) + 1,
+      // Agrupar por curso completo, nunca por la letra de clase (A, B, C...).
+      // courseName ya excluye groupLetter; se cubren también etiquetas legadas
+      // que pudieran traer esa letra dentro del propio className.
+      const course = normalizeCourseLabel(
+        calculated.courseName.replace(/\\s*(?:[-–]\\s*|\\s+)[A-Z]$/i,'')
+      );
+      const current = map.get(course);
+      map.set(course,{
+        label:course,
+        count:(current?.count||0)+1,
         order:calculated.isGraduated ? 99 : calculated.ageInAcademicYear,
       });
     });
@@ -716,7 +712,7 @@ export default function App() {
               <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
                 <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,0.08)]">
                   <div className="mb-5 flex items-center justify-between">
-                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Distribución académica</div><h2 className="mt-1 text-base font-black text-slate-950">Alumnado por curso</h2></div>
+                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Distribución académica</div><h2 className="mt-1 text-base font-black text-slate-950">Alumnado por curso</h2><p className="mt-1 text-[10px] font-semibold text-slate-400">Total por curso · grupos A, B y C agrupados</p></div>
                     <GraduationCap size={19} className="text-indigo-400"/>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
