@@ -167,12 +167,20 @@ const stylesheet = (): string => [
   '.muted{color:#64748b;font-size:7.4pt}',
   '.course-group{break-after:auto}',
   '.course-heading{background:#f1f5f9;border-left:2.3mm solid #b91c1c;padding:2mm 3mm;margin:4mm 0 1.5mm;font-size:9pt;font-weight:800;break-after:avoid}',
-  '.student-strip{display:grid;grid-template-columns:minmax(0,1.22fr) minmax(0,1fr) max-content;align-items:baseline;gap:1.8mm;padding:1mm 1.6mm;border-bottom:1px solid #e2e8f0;font-size:7.1pt;line-height:1.25;white-space:nowrap;break-inside:avoid}',
-  '.student-strip b{font-weight:750;min-width:0}',
-  '.student-strip .student-family{min-width:0;color:#475569;font-size:6.8pt}',
-  '.student-strip .student-details{white-space:nowrap;text-align:right;color:#64748b;font-size:6.7pt}',
-  '.student-strip.tight{font-size:6.35pt;gap:1mm}',
-  '.student-strip.tight .student-family,.student-strip.tight .student-details{font-size:6.1pt}',
+  // Cinco columnas idénticas en cabecera y filas: ninguna celda invade la siguiente.
+  // Las etiquetas se indican una vez por grupo y no se repiten en cada alumno.
+  '.student-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,.43fr) minmax(0,.48fr) 7mm;gap:1mm;align-items:baseline;padding-inline:1mm;min-width:0}',
+  '.student-grid>*{min-width:0;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.student-column-head{margin-top:1mm;padding-block:1mm;border-bottom:1px solid #cbd5e1;color:#64748b;font-size:6.1pt;letter-spacing:.02em;font-weight:750;text-transform:uppercase;break-after:avoid}',
+  '.student-strip{padding-block:1.1mm;border-bottom:1px solid #e2e8f0;font-size:7.1pt;line-height:1.25;white-space:nowrap;break-inside:avoid;page-break-inside:avoid}',
+  '.student-strip b{font-weight:750}',
+  '.student-strip .student-family{color:#475569;font-size:6.8pt}',
+  '.student-strip .student-number{font-size:6.7pt;color:#334155;font-weight:700;font-variant-numeric:tabular-nums}',
+  '.student-strip .student-birth{font-size:6.7pt;color:#64748b;font-variant-numeric:tabular-nums}',
+  '.student-strip .student-class{text-align:center;color:#64748b;font-size:6.7pt;font-weight:650}',
+  '.student-column-head .student-class{text-align:center}',
+  '.student-strip.tight b{font-size:6.45pt}',
+  '.student-strip.tight .student-family{font-size:6.2pt}',
   '.student-strip:nth-of-type(even){background:#f8fafc}',
   '.issue-tags{display:flex;flex-wrap:wrap;gap:1.5mm;margin-top:2mm}',
   '.issue-tag{background:#fff7ed;color:#9a3412;border-radius:1mm;padding:.7mm 2mm;font-size:7.4pt}',
@@ -488,6 +496,9 @@ export function renderReportHtml(kind: HtmlReportKind, families: Family[], setti
       all.map(([course, data]) =>
         '<section class="course-group"><div class="course-heading">' + escapeHtml(course) +
         ' · ' + data.length + ' alumnos/as</div>' +
+        '<div class="student-grid student-column-head"><span>Apellidos, nombre</span>' +
+        '<span>Familia</span><span>N.º socio</span><span>Nacimiento</span>' +
+        '<span class="student-class">Grupo</span></div>' +
         data.sort((a, b) =>
           (a.s.lastName.trim() || a.f.familyName).localeCompare(
             b.s.lastName.trim() || b.f.familyName, 'es', { sensitivity: 'base' }) ||
@@ -498,14 +509,15 @@ export function renderReportHtml(kind: HtmlReportKind, families: Family[], setti
             : studentName(s);
           const date = s.birthDateDDMMAAAA
             ? parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay
-            : (s.birthYear ? String(s.birthYear) : 'Sin fecha de nacimiento');
-          const tight = name.length > 37 || f.familyName.length > 29 || f.membershipNumber.length > 15;
-          return '<div class="student-strip' + (tight ? ' tight' : '') + '"><b>' +
-            safeText(name) + '</b><span class="student-family">Familia ' +
-            safeText(f.familyName) + ' · ' + code(f) +
-            '</span><span class="student-details">' + escapeHtml(date) +
-            (s.groupLetter ? ' · Grupo ' + escapeHtml(s.groupLetter) : '') +
-            '</span></div>';
+            : (s.birthYear ? String(s.birthYear) : '');
+          const tight = name.length > 34 || f.familyName.length > 27;
+          return '<div class="student-grid student-strip' + (tight ? ' tight' : '') + '">' +
+            '<b>' + safeText(name) + '</b>' +
+            '<span class="student-family">' + safeText(f.familyName, '') + '</span>' +
+            '<span class="student-number">' + safeText(f.membershipNumber, '') + '</span>' +
+            '<span class="student-birth">' + escapeHtml(date) + '</span>' +
+            '<span class="student-class">' + escapeHtml(s.groupLetter || '') + '</span>' +
+            '</div>';
         }).join('') + '</section>'
       ).join('');
     return documentHtml(options, { title: 'Alumnado por curso', label: 'Informe académico',
