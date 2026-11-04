@@ -167,7 +167,12 @@ const stylesheet = (): string => [
   '.muted{color:#64748b;font-size:7.4pt}',
   '.course-group{break-after:auto}',
   '.course-heading{background:#f1f5f9;border-left:2.3mm solid #b91c1c;padding:2mm 3mm;margin:4mm 0 1.5mm;font-size:9pt;font-weight:800;break-after:avoid}',
-  '.student-strip{display:grid;grid-template-columns:1.2fr 1fr 36mm;gap:2mm;padding:1.5mm 2mm;border-bottom:1px solid #e2e8f0;font-size:8.2pt}',
+  '.student-strip{display:grid;grid-template-columns:minmax(0,1.22fr) minmax(0,1fr) max-content;align-items:baseline;gap:1.8mm;padding:1mm 1.6mm;border-bottom:1px solid #e2e8f0;font-size:7.1pt;line-height:1.25;white-space:nowrap;break-inside:avoid}',
+  '.student-strip b{font-weight:750;min-width:0}',
+  '.student-strip .student-family{min-width:0;color:#475569;font-size:6.8pt}',
+  '.student-strip .student-details{white-space:nowrap;text-align:right;color:#64748b;font-size:6.7pt}',
+  '.student-strip.tight{font-size:6.35pt;gap:1mm}',
+  '.student-strip.tight .student-family,.student-strip.tight .student-details{font-size:6.1pt}',
   '.student-strip:nth-of-type(even){background:#f8fafc}',
   '.issue-tags{display:flex;flex-wrap:wrap;gap:1.5mm;margin-top:2mm}',
   '.issue-tag{background:#fff7ed;color:#9a3412;border-radius:1mm;padding:.7mm 2mm;font-size:7.4pt}',
@@ -483,14 +488,25 @@ export function renderReportHtml(kind: HtmlReportKind, families: Family[], setti
       all.map(([course, data]) =>
         '<section class="course-group"><div class="course-heading">' + escapeHtml(course) +
         ' · ' + data.length + ' alumnos/as</div>' +
-        data.sort((a, b) => studentName(a.s).localeCompare(studentName(b.s), 'es')).map(({ f, s }) =>
-          '<div class="student-strip"><b>' + safeText(studentName(s)) + '</b><span>Familia ' +
-          safeText(f.familyName) + ' · ' + code(f) + '</span><span class="muted">' +
-          (s.birthDateDDMMAAAA ? escapeHtml(parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay)
-            : (s.birthYear || 'Sin fecha de nacimiento')) +
-          (s.groupLetter ? ' · Grupo ' + escapeHtml(s.groupLetter) : '') +
-          '</span></div>'
-        ).join('') + '</section>'
+        data.sort((a, b) =>
+          (a.s.lastName.trim() || a.f.familyName).localeCompare(
+            b.s.lastName.trim() || b.f.familyName, 'es', { sensitivity: 'base' }) ||
+          a.s.firstName.localeCompare(b.s.firstName, 'es', { sensitivity: 'base' })
+        ).map(({ f, s }) => {
+          const name = s.lastName.trim()
+            ? s.lastName.trim() + ', ' + s.firstName.trim()
+            : studentName(s);
+          const date = s.birthDateDDMMAAAA
+            ? parseDDMMAAAA(s.birthDateDDMMAAAA).formattedDisplay
+            : (s.birthYear ? String(s.birthYear) : 'Sin fecha de nacimiento');
+          const tight = name.length > 37 || f.familyName.length > 29 || f.membershipNumber.length > 15;
+          return '<div class="student-strip' + (tight ? ' tight' : '') + '"><b>' +
+            safeText(name) + '</b><span class="student-family">Familia ' +
+            safeText(f.familyName) + ' · ' + code(f) +
+            '</span><span class="student-details">' + escapeHtml(date) +
+            (s.groupLetter ? ' · Grupo ' + escapeHtml(s.groupLetter) : '') +
+            '</span></div>';
+        }).join('') + '</section>'
       ).join('');
     return documentHtml(options, { title: 'Alumnado por curso', label: 'Informe académico',
       detail: 'Relación de alumnado agrupado por curso escolar' }, body);
