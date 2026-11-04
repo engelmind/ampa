@@ -354,7 +354,7 @@ export default function App() {
       // courseName ya excluye groupLetter; se cubren también etiquetas legadas
       // que pudieran traer esa letra dentro del propio className.
       const course = normalizeCourseLabel(
-        calculated.courseName.replace(/\\s*(?:[-–]\\s*|\\s+)[A-Z]$/i,'')
+        calculated.courseName.replace(/\s*(?:[-–]\s*|\s+)[A-Z]$/i,'')
       );
       const current = map.get(course);
       map.set(course,{
