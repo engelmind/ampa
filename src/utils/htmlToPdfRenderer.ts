@@ -108,10 +108,12 @@ const afterGap = (element: HTMLElement): number => {
   return 1.2;
 };
 
-export async function renderHtmlReportPdf(html: string): Promise<Blob> {
+export async function renderHtmlReportPdf(html: string, signal?: AbortSignal): Promise<Blob> {
   let frame: HTMLIFrameElement | null = null;
   try {
+    if (signal?.aborted) throw new DOMException('Cancelado', 'AbortError');
     frame = await createRenderFrame(html);
+    if (signal?.aborted) throw new DOMException('Cancelado', 'AbortError');
     const documentNode = frame.contentDocument;
     const root = documentNode?.querySelector('.document');
     if (!root || root.nodeType !== 1) throw new Error('No se ha encontrado el contenido del informe.');
@@ -140,6 +142,7 @@ export async function renderHtmlReportPdf(html: string): Promise<Blob> {
     drawPageStripe();
 
     for (let index = 0; index < blocks.length; index++) {
+      if (signal?.aborted) throw new DOMException('Cancelado', 'AbortError');
       const element = blocks[index];
       // Los elementos originales conservan sus estilos corporativos y
       // el ancho real de la página A4 en el iframe de renderización.
