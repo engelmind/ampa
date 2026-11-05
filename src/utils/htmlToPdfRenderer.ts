@@ -24,7 +24,7 @@ const waitForImages = async (doc: Document): Promise<void> => {
     image.addEventListener('error', done, { once: true });
   })));
   const missingIllustration = doc.querySelector('.event-hero img');
-  if (missingIllustration instanceof HTMLImageElement && !missingIllustration.naturalWidth) {
+  if (missingIllustration?.tagName === 'IMG' && !(missingIllustration as HTMLImageElement).naturalWidth) {
     throw new Error('No se ha podido cargar la ilustración del evento. Compruebe la imagen antes de generar el PDF.');
   }
 };
@@ -63,23 +63,30 @@ const reportBlocks = (root: HTMLElement): HTMLElement[] => {
   const main = root.querySelector('main');
 
   for (const child of Array.from(root.children)) {
-    if (!(child instanceof HTMLElement) || child.classList.contains('topline') || child === main) continue;
+    if (child.nodeType !== 1) continue;
+    const element = child as HTMLElement;
+    if (element.classList.contains('topline') || element === main) continue;
     result.push(child);
   }
   if (!main) return result;
 
   for (const item of Array.from(main.children)) {
-    if (!(item instanceof HTMLElement)) continue;
+    if (item.nodeType !== 1) continue;
+    const element = item as HTMLElement;
     if (item.classList.contains('course-group')) {
       for (const row of Array.from(item.children)) {
-        if (row instanceof HTMLElement) result.push(row);
+        if (row.nodeType === 1) result.push(row as HTMLElement);
       }
     } else if (item.classList.contains('cards-grid')) {
-      // Cada tarjeta es un bloque independiente. El grupo original ocupa dos
-      // columnas; la salida PDF reserva un ancho completo por ficha para
-      // conservar información legible en A4 vertical.
+      // Los clones se insertan temporalmente en una columna A4 completa.
+      // El original a dos columnas permanece intacto en la previsualización.
       for (const card of Array.from(item.children)) {
-        if (card instanceof HTMLElement) result.push(card);
+        if (card.nodeType !== 1) continue;
+        const clone = card.cloneNode(true) as HTMLElement;
+        clone.style.width = '100%';
+        clone.style.minHeight = '0';
+        main.appendChild(clone);
+        result.push(clone);
       }
     } else {
       result.push(item);
@@ -107,9 +114,9 @@ export async function renderHtmlReportPdf(html: string): Promise<Blob> {
     frame = await createRenderFrame(html);
     const documentNode = frame.contentDocument;
     const root = documentNode?.querySelector('.document');
-    if (!(root instanceof HTMLElement)) throw new Error('No se ha encontrado el contenido del informe.');
+    if (!root || root.nodeType !== 1) throw new Error('No se ha encontrado el contenido del informe.');
 
-    const blocks = reportBlocks(root);
+    const blocks = reportBlocks(root as HTMLElement);
     if (!blocks.length) throw new Error('El informe no contiene datos imprimibles.');
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
