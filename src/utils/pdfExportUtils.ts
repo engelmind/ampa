@@ -81,7 +81,7 @@ export function createFamiliesPdfArtifact(families: Family[], options: PdfReport
     renderFamiliesHtml(families, options),
     'censo_familias_' + options.academicYear.replace('/', '-') + '.pdf',
     title,
-    String(families.length) + ' familias · Maquetación HTML para guardar como PDF'
+    String(families.length) + ' familias · PDF A4 descargable y compartible'
   );
 }
 
@@ -107,7 +107,7 @@ export function createEventParticipantsPdfArtifact(
     (pending?'asistencia_precargada_':'participantes_') + safeFilenamePart(event.title) + '_' + (event.eventDate || 'sin_fecha') + '.pdf',
     (pending?'Asistencia precargada · ':'Participantes · ') + event.title,
     uniqueFamilies + ' familias · ' + event.attendees.length +
-      (pending?' personas pendientes de comprobación · HTML listo para impresión':' participantes · HTML listo para impresión')
+      (pending?' personas pendientes de comprobación · PDF A4':' participantes · PDF A4')
   );
 }
 
@@ -213,6 +213,6 @@ export function createReportPdfArtifact(
     renderReportHtml(kind, families, settings),
     kind.replace(/[^a-zA-Z0-9-]/g, '_') + '_' + settings.activeAcademicYear.replace('/', '-') + '.pdf',
     title,
-    String(families.length) + ' familias seleccionadas · Previsualización HTML imprimible'
+    String(families.length) + ' familias seleccionadas · PDF A4 para guardar o compartir'
   );
 }
