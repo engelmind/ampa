@@ -187,7 +187,12 @@ const stylesheet = (): string => [
   '.privacy{margin:3mm 0 5mm;padding:2.5mm 3mm;border:1px solid #fed7aa;background:#fff7ed;color:#9a3412;font-size:8pt;break-inside:avoid}',
   '.event-hero{display:grid;grid-template-columns:minmax(0,1fr) 57mm;gap:5mm;border:1px solid #e2e8f0;border-radius:3mm;padding:4mm;margin:5mm 0 4mm;break-inside:avoid;background:linear-gradient(125deg,#fff 0%,#fff8f8 100%)}',
   '.event-hero.no-image{grid-template-columns:1fr}',
-  '.event-hero img{width:100%;height:42mm;object-fit:cover;border-radius:2mm}',
+  '.event-hero img{display:block;width:100%;height:42mm;object-fit:contain;object-position:center;background:#fff;border:1px solid #e2e8f0;border-radius:2mm}',
+  '.event-hero.compact{padding:2.7mm 3mm;margin:2.5mm 0 3.5mm;grid-template-columns:minmax(0,1fr) 51mm;gap:3mm}',
+  '.event-hero.compact img{height:34mm}',
+  '.event-hero.compact h2{font-size:10pt;margin-bottom:2mm}',
+  '.event-hero.compact.no-image{grid-template-columns:1fr}',
+  '.event-hero-missing{display:flex;align-items:center;justify-content:center;min-height:28mm;color:#9a3412;background:#fff7ed;border:1px dashed #fdba74;border-radius:2mm;font-size:7.5pt;padding:2mm;text-align:center}',
   '.event-hero h2{font-size:11pt;margin:0 0 3mm;line-height:1.2;color:#991b1b}',
   '.event-info{display:flex;flex-wrap:wrap;gap:2mm;font-size:7.5pt;font-weight:700;color:#475569}',
   '.event-info>span{padding:1mm 2mm;background:#fff;border:1px solid #e2e8f0;border-radius:1mm}',
@@ -226,7 +231,7 @@ const stylesheet = (): string => [
   '.event-roster-empty{color:#94a3b8;font-style:italic;font-size:7.2pt}',
   '.blank{padding:6mm;text-align:center;border:1px dashed #cbd5e1;color:#64748b}',
   '@media print{html,body{background:#fff}.document{box-shadow:none;padding:0;max-width:none;margin:0}.topline{margin:0 0 5mm}.brand{padding-bottom:3mm}}',
-  '@media(max-width:660px){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
+  '@media(max-width:660px) and (not print){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero.compact{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
 ].join('\n');
 
 type Layout = { title: string; detail?: string; label?: string; privacy?: string };
@@ -257,6 +262,31 @@ const documentHtml = (settings: PrintReportOptions, layout: Layout, body: string
   ].join('');
 };
 
+/** Cabecera visual canónica para todos los listados de un evento.
+ * La ilustración se recupera siempre de la ficha del propio evento.
+ * En las listas operativas se omite la descripción larga para ganar espacio. */
+const eventReportBanner = (
+  event: EventDetail, settings: SystemSettings, compact = false
+): string => {
+  const imageUrl = String(event.imageDataUrl || '').trim();
+  const safeImage = /^(data:image\\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+|https?:\\/\\/[^\\s"'<>]+)$/i.test(imageUrl)
+    ? escapeHtml(imageUrl) : '';
+  const date = event.eventDate
+    ? new Date(event.eventDate + 'T12:00:00').toLocaleDateString('es-ES')
+    : 'Sin fecha';
+  const photo = safeImage
+    ? '<img src="' + safeImage + '" alt="Ilustración del evento ' + escapeHtml(event.title) + '">'
+    : '<div class="event-hero-missing">Este evento no tiene ilustración asignada. Añádala en la ficha del evento.</div>';
+  return '<section class="event-hero' + (compact ? ' compact' : '') + '">' +
+    '<div><h2>' + safeText(event.title) + '</h2>' +
+    '<div class="event-info"><span>Fecha: ' + escapeHtml(date) + '</span>' +
+    '<span>Curso ' + safeText(event.academicYear, settings.activeAcademicYear) + '</span></div>' +
+    (!compact && event.description
+      ? '<div class="event-description">' + escapeHtml(event.description) + '</div>'
+      : '') +
+    '</div>' + photo + '</section>';
+};
+
 export function renderFamiliesHtml(families: Family[], options: PrintReportOptions): string {
   const body = summary([
     ['Familias', uniqueFamilies(families)], ['Adultos', countGuardians(families)],
@@ -285,15 +315,7 @@ export function renderEventParticipantsHtml(event: EventDetail, families: Family
     String(familyMap.get(a)?.familyName || a).localeCompare(String(familyMap.get(b)?.familyName || b), 'es', { sensitivity: 'base' })
   );
   const eventDate = event.eventDate ? new Date(event.eventDate + 'T12:00:00').toLocaleDateString('es-ES') : 'Sin fecha';
-  const imageUrl = String(event.imageDataUrl || '').trim();
-  const safeImage = /^(data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s"'<>]+)$/i.test(imageUrl)
-    ? escapeHtml(imageUrl) : '';
-  const hero = '<section class="event-hero ' + (safeImage ? '' : 'no-image') + '">' +
-    '<div><h2>' + safeText(event.title) + '</h2>' +
-    '<div class="event-info"><span>Fecha: ' + escapeHtml(eventDate) + '</span><span>Curso ' +
-    safeText(event.academicYear, settings.activeAcademicYear) + '</span></div>' +
-    (event.description ? '<div class="event-description">' + escapeHtml(event.description) + '</div>' : '') +
-    '</div>' + (safeImage ? '<img src="' + safeImage + '" alt="Imagen de la actividad">' : '') + '</section>';
+  const hero = eventReportBanner(event, settings);
   const panels = keys.map(id => {
     const family = familyMap.get(id);
     const attendees = [...(byFamily.get(id) || [])].sort((a, b) =>
@@ -430,7 +452,7 @@ export function renderEventRegistrationsHtml(
     label:mode==='check'?'Control de asistencia':'Relación de inscritos',
     detail:eventDate+' · '+(mode==='check'?'Nombres y casillas de control':'Adultos y menores por unidad familiar'),
     privacy:'Uso interno del AMPA. '+explanation+' Este documento no acredita asistencia efectiva.'
-  },summaryHtml+reportSectionTitle('Familias y personas inscritas',registrations.length)+
+  },eventReportBanner(event,settings,true)+summaryHtml+reportSectionTitle('Familias y personas inscritas',registrations.length)+
       (panels||'<p class="blank">No hay familias confirmadas para este evento.</p>'));
 }
 
