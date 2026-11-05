@@ -47,25 +47,32 @@ export async function printHtmlDocument(printWindow: Window, html: string): Prom
   printWindow.print();
 }
 
-export function downloadPdfArtifact(item: PdfArtifact): void {
-  if (item.html) {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      window.alert('El navegador ha bloqueado la ventana de impresión. Permita las ventanas emergentes para esta aplicación.');
-      return;
-    }
-    void printHtmlDocument(printWindow, item.html).catch(() => {
-      printWindow.document.body.innerHTML += '<p style="padding:20px">Utilice Ctrl+P para imprimir o guardar como PDF.</p>';
-    });
-    return;
-  }
-  if (!item.blob) return;
-  const url = URL.createObjectURL(item.blob);
+/** Descarga un archivo PDF real. Se libera la URL con margen para Safari iOS. */
+export function downloadPdfBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = item.filename;
+  a.download = filename.endsWith('.pdf') ? filename : filename + '.pdf';
+  a.type = 'application/pdf';
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+export function downloadPdfArtifact(item: PdfArtifact): void {
+  if (item.blob) { downloadPdfBlob(item.blob, item.filename); return; }
+  if (!item.html) return;
+  // El método heredado también genera un archivo real: nunca depende del
+  // diálogo de impresión para obtener un PDF en el dispositivo.
+  void import('./htmlToPdfRenderer')
+    .then(({renderHtmlReportPdf}) => renderHtmlReportPdf(item.html as string))
+    .then(blob => downloadPdfBlob(blob, item.filename))
+    .catch(error => window.alert(
+      'No ha sido posible generar el PDF: ' +
+      (error instanceof Error ? error.message : 'error desconocido')
+    ));
 }
 
 export function createFamiliesPdfArtifact(families: Family[], options: PdfReportOptions): PdfArtifact {
