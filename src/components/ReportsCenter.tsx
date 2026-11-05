@@ -57,7 +57,7 @@ export function ReportsCenter({allFamilies,filteredFamilies,settings,role,onPrev
         <div className="min-w-0 flex-1">
           <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Documentación</div>
           <h2 className="text-lg font-black">Centro de informes PDF</h2>
-          <p className="mt-1 text-xs text-slate-500">Cada informe dispone de una plantilla HTML propia y puede previsualizarse antes de imprimir o guardar en PDF.</p>
+          <p className="mt-1 text-xs text-slate-500">Cada informe se convierte en un archivo PDF A4 real, que puede guardar o compartir desde el móvil sin pasar por el diálogo de impresión.</p>
         </div>
         <div className="flex rounded-xl bg-slate-100 p-1">
           <button onClick={()=>setScope('filtered')} className={`min-h-9 rounded-lg px-3 text-xs font-bold ${scope==='filtered'?'bg-white shadow-sm':'text-slate-500'}`}>Filtro actual · {filteredFamilies.length}</button>
