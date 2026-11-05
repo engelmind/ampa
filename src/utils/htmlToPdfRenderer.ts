@@ -47,14 +47,20 @@ const createRenderFrame = async (html: string): Promise<HTMLIFrameElement> => {
     frame.onload = () => resolve();
     frame.onerror = () => reject(new Error('No ha sido posible preparar la vista del informe.'));
   });
-  document.body.appendChild(frame);
+  // Asignar srcdoc antes de insertar evita capturar el primer load de about:blank.
   frame.srcdoc = source;
-  await loaded;
-  const innerDoc = frame.contentDocument;
-  if (!innerDoc) throw new Error('El navegador no permite acceder a la vista del informe.');
-  await waitForImages(innerDoc);
-  try { await innerDoc.fonts.ready; } catch { /* El PDF usa la fuente alternativa cuando procede. */ }
-  return frame;
+  document.body.appendChild(frame);
+  try {
+    await loaded;
+    const innerDoc = frame.contentDocument;
+    if (!innerDoc) throw new Error('El navegador no permite acceder a la vista del informe.');
+    await waitForImages(innerDoc);
+    try { await innerDoc.fonts.ready; } catch { /* El PDF usa la fuente alternativa cuando procede. */ }
+    return frame;
+  } catch (error) {
+    frame.remove();
+    throw error;
+  }
 };
 
 /** Fragmentos independientes, para mantener juntas las fichas sin perder filas. */
