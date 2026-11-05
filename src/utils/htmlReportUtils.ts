@@ -231,7 +231,7 @@ const stylesheet = (): string => [
   '.event-roster-empty{color:#94a3b8;font-style:italic;font-size:7.2pt}',
   '.blank{padding:6mm;text-align:center;border:1px dashed #cbd5e1;color:#64748b}',
   '@media print{html,body{background:#fff}.document{box-shadow:none;padding:0;max-width:none;margin:0}.topline{margin:0 0 5mm}.brand{padding-bottom:3mm}}',
-  '@media(max-width:660px) and (not print){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero.compact{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
+  '@media screen and (max-width:660px){.document{margin:0;padding:4mm}.topline{margin:-4mm -4mm 5mm}.brand img{max-width:39mm}.event-hero{grid-template-columns:1fr}.event-hero.compact{grid-template-columns:1fr}.event-hero img{height:auto;max-height:42mm}.contact-person{grid-template-columns:1fr}.cards-grid{grid-template-columns:1fr}.family-strip{grid-template-columns:1fr}}'
 ].join('\n');
 
 type Layout = { title: string; detail?: string; label?: string; privacy?: string };
@@ -269,7 +269,7 @@ const eventReportBanner = (
   event: EventDetail, settings: SystemSettings, compact = false
 ): string => {
   const imageUrl = String(event.imageDataUrl || '').trim();
-  const safeImage = /^(data:image\\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+|https?:\\/\\/[^\\s"'<>]+)$/i.test(imageUrl)
+  const safeImage = /^(data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+|https?:\/\/[^\s"'<>]+)$/i.test(imageUrl)
     ? escapeHtml(imageUrl) : '';
   const date = event.eventDate
     ? new Date(event.eventDate + 'T12:00:00').toLocaleDateString('es-ES')
