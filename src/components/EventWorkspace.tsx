@@ -226,10 +226,18 @@ export function EventWorkspace({
   };
 
   const openRegistrationReport=(mode:'simple'|'check')=>{
+    if(!detail.imageDataUrl?.trim()){
+      onNotify('error','Falta la ilustración','Añada una imagen al evento antes de imprimir su listado.');
+      return;
+    }
     if(!confirmed.length){onNotify('info','No hay familias confirmadas');return}
     setPrintPreview(createEventRegistrationsPdfArtifact(detail,families,settings,mode));
   };
   const openAttendanceReport=()=>{
+    if(!detail.imageDataUrl?.trim()){
+      onNotify('error','Falta la ilustración','Añada una imagen al evento antes de imprimir su listado.');
+      return;
+    }
     if(!detail.attendees.length){onNotify('info','No hay asistencia efectiva registrada');return}
     setPrintPreview(createEventParticipantsPdfArtifact(detail,families,settings));
   };
