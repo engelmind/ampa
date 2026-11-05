@@ -66,7 +66,7 @@ const reportBlocks = (root: HTMLElement): HTMLElement[] => {
     if (child.nodeType !== 1) continue;
     const element = child as HTMLElement;
     if (element.classList.contains('topline') || element === main) continue;
-    result.push(child);
+    result.push(element);
   }
   if (!main) return result;
 
@@ -89,7 +89,7 @@ const reportBlocks = (root: HTMLElement): HTMLElement[] => {
         result.push(clone);
       }
     } else {
-      result.push(item);
+      result.push(element);
     }
   }
   return result;
