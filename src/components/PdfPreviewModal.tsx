@@ -118,7 +118,7 @@ export function PdfPreviewModal({ artifact, onClose, onEmail, emailLabel = 'Envi
           {artifact.html && <button type="button" onClick={() => setRetry(value => value + 1)} className="rounded-lg border border-red-200 px-2.5 py-1 font-bold">Reintentar</button>}
         </div>}
         {artifact.html && !generating && pdfBlob && <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-1.5 text-[11px] font-semibold text-emerald-800">
-          PDF generado. Puede compartirlo directamente o guardarlo en Archivos/Descargas. La vista inferior muestra la plantilla original.
+          {shareable ? 'PDF generado. Pulse Compartir PDF para enviarlo por WhatsApp, correo o guardarlo en Archivos.' : 'PDF generado. Pulse Guardar PDF y comparta el archivo desde Archivos o Descargas.'} La vista inferior muestra la plantilla original.
         </div>}
         <div className="min-h-0 flex-1 bg-slate-100 p-2 sm:p-4">
           {artifact.html ? (
