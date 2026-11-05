@@ -270,6 +270,10 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
       onNotify('error','Faltan datos','Indique el título, la fecha y el curso escolar.');
       return;
     }
+    if(!draft.imageDataUrl?.trim()){
+      onNotify('error','Falta la ilustración','Añada una imagen del evento. Es obligatoria para todos sus listados PDF.');
+      return;
+    }
     setSavingEvent(true);
     try{
       const payload={...draft,registrationDeadline:draft.registrationDeadline ? new Date(draft.registrationDeadline).toISOString() : null};
@@ -300,7 +304,12 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   };
 
   const downloadParticipantsPdf=()=>{
-    if(!detail || !detail.attendees.length){
+    if(!detail) return;
+    if(!detail.imageDataUrl?.trim()){
+      onNotify('error','Falta la ilustración','Añada una imagen al evento antes de imprimir su listado.');
+      return;
+    }
+    if(!detail.attendees.length){
       onNotify('info','Sin participantes','Guarde al menos un participante antes de generar la lista.');
       return;
     }
@@ -308,7 +317,12 @@ export function EventsModule({families,events,totals,settings,canEdit,canDelete,
   };
 
   const downloadRegistrationsPdf=()=>{
-    if(!detail || !detail.registrations.some(registration=>registration.status!=='cancelled')){
+    if(!detail) return;
+    if(!detail.imageDataUrl?.trim()){
+      onNotify('error','Falta la ilustración','Añada una imagen al evento antes de imprimir su listado.');
+      return;
+    }
+    if(!detail.registrations.some(registration=>registration.status!=='cancelled')){
       onNotify('info','Sin inscripciones','Todavía no hay familias inscritas.');
       return;
     }
@@ -738,7 +752,7 @@ function EventEditor({draft,setDraft,saving,onSave,onClose,onImage}:{
         </section>
 
         <div>
-          <div className="mb-1 text-[11px] font-bold text-slate-500">Imagen del evento</div>
+          <div className="mb-1 text-[11px] font-bold text-slate-500">Imagen del evento · Obligatoria para los listados PDF</div>
           <label onDragEnter={e=>{e.preventDefault();setDragging(true)}} onDragOver={e=>e.preventDefault()} onDragLeave={()=>setDragging(false)} onDrop={e=>{e.preventDefault();setDragging(false);void onImage(e.dataTransfer.files?.[0])}} className={`relative flex min-h-48 cursor-pointer items-center justify-center overflow-hidden rounded-[24px] border-2 border-dashed transition ${dragging?'border-indigo-400 bg-indigo-50':'border-slate-200 bg-slate-50'}`}>
             {draft.imageDataUrl?<img src={draft.imageDataUrl} alt="" className="absolute inset-0 h-full w-full object-cover"/>:<div className="text-center text-slate-400"><ImagePlus size={30} className="mx-auto"/><div className="mt-2 text-xs font-black">Arrastre una imagen o pulse para elegirla</div><div className="mt-1 text-[10px]">Se optimizará automáticamente para la app</div></div>}
             <input type="file" accept="image/*" className="sr-only" onChange={e=>void onImage(e.target.files?.[0])}/>
