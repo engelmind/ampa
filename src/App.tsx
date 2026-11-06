@@ -339,20 +339,26 @@ export default function App() {
     return {rows,missing,outside};
   },[activeFamilies]);
 
+  // El gráfico académico no representa todo el directorio ni todos los hijos:
+  // exclusivamente alumnado escolarizado en el curso actual que pertenece a
+  // familias con alta activa y número de socio AMPA vigente. No se calculan
+  // cursos hipotéticos a partir de fechas de nacimiento o cursos antiguos.
+  const currentMemberStudents = useMemo(() =>
+    activeFamilies
+      .filter((family) => /^SOC-\d+$/i.test(family.membershipNumber.trim()))
+      .flatMap((family) =>
+        family.students.filter((student) =>
+          hasOfficialCurrentCourse(student, settings.activeAcademicYear)
+        )
+      ),
+    [activeFamilies, settings.activeAcademicYear]
+  );
+
   const courseBreakdown = useMemo(() => {
     const map = new Map<string,{ label:string; count:number; order:number }>();
-    activeFamilies.flatMap((family)=>family.students).forEach((student) => {
-      if (!hasOfficialCurrentCourse(student,settings.activeAcademicYear) && !student.birthDateDDMMAAAA) {
-        const label = 'Sin curso asignado';
-        const current = map.get(label);
-        map.set(label,{label,count:(current?.count||0)+1,order:999});
-        return;
-      }
-
-      const calculated = calculateStudentCourse(student,settings.activeAcademicYear);
-      // Agrupar por curso completo, nunca por la letra de clase (A, B, C...).
-      // courseName ya excluye groupLetter; se cubren también etiquetas legadas
-      // que pudieran traer esa letra dentro del propio className.
+    currentMemberStudents.forEach((student) => {
+      const calculated = calculateStudentCourse(student, settings.activeAcademicYear);
+      // Los grupos A/B/C se suman en un solo curso sin alterar las fichas.
       const course = normalizeCourseLabel(
         calculated.courseName.replace(/\s*(?:[-–]\s*|\s+)[A-Z]$/i,'')
       );
@@ -360,11 +366,11 @@ export default function App() {
       map.set(course,{
         label:course,
         count:(current?.count||0)+1,
-        order:calculated.isGraduated ? 99 : calculated.ageInAcademicYear,
+        order:calculated.ageInAcademicYear,
       });
     });
     return Array.from(map.values()).sort((a,b)=>a.order-b.order || a.label.localeCompare(b.label,'es'));
-  },[activeFamilies,settings.activeAcademicYear]);
+  },[currentMemberStudents]);
 
   const maxCourseCount = Math.max(1,...courseBreakdown.map((item)=>item.count));
   const recentActivity = activity.slice(0,7);
@@ -712,8 +718,8 @@ export default function App() {
               <section className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
                 <div className="rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-[0_16px_40px_rgba(71,85,105,0.08)]">
                   <div className="mb-5 flex items-center justify-between">
-                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Distribución académica</div><h2 className="mt-1 text-base font-black text-slate-950">Alumnado por curso</h2><p className="mt-1 text-[10px] font-semibold text-slate-400">Total por curso · grupos A, B y C agrupados</p></div>
-                    <GraduationCap size={19} className="text-indigo-400"/>
+                    <div><div className="text-[10px] font-black uppercase tracking-[.18em] text-slate-400">Distribución académica</div><h2 className="mt-1 text-base font-black text-slate-950">Alumnado por curso</h2><p className="mt-1 text-[10px] font-semibold text-slate-400">Solo familias socias activas · Curso {settings.activeAcademicYear} · Grupos A, B y C sumados</p></div>
+                    <div className="flex shrink-0 items-center gap-2"><span className="rounded-xl bg-indigo-50 px-2.5 py-1.5 text-[11px] font-black text-indigo-700">{currentMemberStudents.length} alumnos/as</span><GraduationCap size={19} className="text-indigo-400"/></div>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {courseBreakdown.map((item)=>(
